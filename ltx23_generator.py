@@ -277,25 +277,39 @@ def _load_video_vae_external(video_vae_choice: str, fallback_ckpt: str, bundled)
 
 
 def _apply_loras(model, clip, kwargs: dict) -> tuple[Any, Any, list[str]]:
-    """Apply the 6 fixed LoRA slots configured via lora_N_on / lora_N /
-    lora_N_strength widget triplets."""
+    """
+    Apply LoRAs from kwargs. Uses DARASK_LoraLoader's parse logic so the
+    same dynamic widget naming (lora_N + lora_N_on + lora_N_strength,
+    optional lora_N_strength_clip) works here too — frontend can add as
+    many rows as the user wants via the `+ Add LoRA` button.
+    """
+    from .lora_loader import DARASK_LoraLoader
+
     applied: list[str] = []
     loader = core_nodes.LoraLoader()
-    for i in range(1, 7):
-        on = bool(kwargs.get(f"lora_{i}_on", False))
-        name = kwargs.get(f"lora_{i}", NONE_LORA)
+    for idx, spec in DARASK_LoraLoader._collect_loras(kwargs):
+        if not spec.get("on", False):
+            continue
+        name = spec.get("lora", "")
+        if not name or name == NONE_LORA:
+            continue
         try:
-            strength = float(kwargs.get(f"lora_{i}_strength", 1.0))
+            strength = float(spec.get("strength", 1.0))
         except (TypeError, ValueError):
             strength = 1.0
-        if not on or not name or name == NONE_LORA or strength == 0:
+        sc = spec.get("strength_clip")
+        try:
+            strength_clip = float(sc) if sc not in (None, "") else strength
+        except (TypeError, ValueError):
+            strength_clip = strength
+        if strength == 0 and strength_clip == 0:
             continue
         resolved = _resolve_lora_name(name)
         if resolved is None:
             print(f"DARASK LTX 2.3 Generator: missing LoRA '{name}', skipping.")
             continue
         try:
-            model, clip = loader.load_lora(model, clip, resolved, strength, strength)
+            model, clip = loader.load_lora(model, clip, resolved, strength, strength_clip)
             applied.append(f"<{os.path.basename(resolved)}:{strength:.3g}>")
         except Exception as e:
             print(f"DARASK LTX 2.3 Generator: LoRA '{resolved}' failed: {e}")
@@ -350,7 +364,6 @@ class DARASK_LTX23Generator:
         audio_vae_choices = ["(from model)"] + ckpts
         clip_src_choices = ["(from model)"] + ckpts
         video_vae_choices = ["(from model)"] + ckpts + _vaes()
-        loras_combo = [NONE_LORA] + _all_loras()
 
         samplers = list(comfy.samplers.SAMPLER_NAMES)
 
@@ -360,12 +373,14 @@ class DARASK_LTX23Generator:
                     return c
             return samplers[0]
 
-        opts = {}
-        # 6 fixed LoRA slots
-        for i in range(1, 7):
-            opts[f"lora_{i}_on"] = ("BOOLEAN", {"default": False})
-            opts[f"lora_{i}"] = (loras_combo, {"default": NONE_LORA})
-            opts[f"lora_{i}_strength"] = ("FLOAT", {"default": 1.0, "min": -4.0, "max": 4.0, "step": 0.05})
+        # LoRA rows are added dynamically by the JS UI (`+ Add LoRA` button)
+        # just like DARASK Lora Loader. FlexibleOptional accepts any
+        # `lora_N` / `lora_N_on` / `lora_N_strength` keys the frontend sends
+        # without us having to declare each slot upfront.
+        from .lora_loader import _FlexibleOptionalInputs
+        optional = _FlexibleOptionalInputs({
+            "image": ("IMAGE",),
+        })
 
         return {
             "required": {
@@ -427,10 +442,7 @@ class DARASK_LTX23Generator:
                 "vae_temporal_size": ("INT", {"default": 512, "min": 8, "max": 4096, "step": 4}),
                 "vae_temporal_overlap": ("INT", {"default": 4, "min": 1, "max": 4096, "step": 1}),
             },
-            "optional": {
-                "image": ("IMAGE",),
-                **opts,
-            },
+            "optional": optional,
         }
 
     # ----- pipeline ---------------------------------------------------------
