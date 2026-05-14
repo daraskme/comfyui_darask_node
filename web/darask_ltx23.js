@@ -7,7 +7,12 @@
 
 import { app } from "../../scripts/app.js";
 
-const NODE_NAME = "DARASK LTX23 Video Settings";
+// Nodes that should get the live width × height × length / fps preview.
+const TARGET_NODES = new Set([
+    "DARASK LTX23 Video Settings",
+    "DARASK LTX 2.3 Generator",
+]);
+const NODE_NAME = "DARASK LTX23 Video Settings"; // kept for back-compat references below
 
 function gcd(a, b) {
     a = Math.abs(a | 0);
@@ -64,7 +69,7 @@ app.registerExtension({
     name: "darask.ltx23.video_settings",
 
     async beforeRegisterNodeDef(nodeType, nodeData) {
-        if (nodeData.name !== NODE_NAME) return;
+        if (!TARGET_NODES.has(nodeData.name)) return;
 
         const onNodeCreated = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {

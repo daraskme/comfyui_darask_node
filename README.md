@@ -1,6 +1,6 @@
 # comfyui_darask_node
 
-ComfyUI 用 DARASK カスタムノード集。4つの実用ワークフローを軸にした14個のノード:
+ComfyUI 用 DARASK カスタムノード集。4つの実用ワークフローを軸にした15個のノード:
 
 1. **画像フォルダの一括アップスケール** — フォルダから画像を順に読み、EXIF / PNGinfo に
    埋め込まれた **元のモデル + LoRA + プロンプト** を自動復元してアップスケール
@@ -54,6 +54,7 @@ ComfyUI を再起動してください。
 | 12 | DARASK RIFE Interpolation | DARASK | RIFE モデルでフレーム補間しFPSアップサンプル |
 | 13 | DARASK LTX 2.3 Video Settings | DARASK | LTX 2.3用の動画サイズ設定(W/H/length/fps + 最終サイズプレビュー) |
 | 14 | DARASK Float → Int | DARASK | FLOAT を INT に丸める(ComfyMath の `CM_FloatToInt` 置き換え) |
+| 15 | DARASK LTX 2.3 Generator (All-in-One) | DARASK | LTX Video 2.3 i2v ワークフロー(7サブグラフ+LoRA)を1ノードに統合 |
 
 ---
 
@@ -388,6 +389,97 @@ LTX 2.3 のテンプレートが `fps`(FLOAT)を `LTXVEmptyLatentAudio.frame_rat
 * `mode`(`round` / `floor` / `ceil` / `trunc`、デフォルト `round`) — 丸め方を選択(オプション)
 
 **出力:** `INT`
+
+---
+
+### 15. DARASK LTX 2.3 Generator (All-in-One)  *(カテゴリ `DARASK`)*
+
+LTX Video 2.3 の画像→動画パイプライン全体を **たった1ノード** にまとめた集約ノード。元の7サブグラフ(Models / I2V Image / Settings / Prompt / Low Res Gen / 2x Upscale / 4x Upscale / Decode)+ LoRA スタックを内部で全部こなします。
+
+#### 入力(`image` のみ)
+
+* `image` (IMAGE, 任意) — i2v の参照フレーム
+
+それ以外はすべて **ウィジェットで設定** します(下のセクション)。
+
+#### セクション構成(ウィジェット)
+
+**① Model**
+* `model_name` — `checkpoints/` と `diffusion_models/` を統合した一覧。`.safetensors`(VAEバンドル可)と `.gguf` の両対応。10Eros 系の checkpoint を選ぶと audio VAE / CLIP も同じファイルから引ける
+* `weight_dtype` — `default / fp8_e4m3fn / fp8_e4m3fn_fast / fp8_e5m2`(diffusion_models / gguf 用)
+* `audio_vae_source` — `(from model)`(model_name と同じ checkpoint から取り出す)/ 個別 checkpoint 指定
+* `video_vae_source` — 同上、`vae/` フォルダのファイルも選択可
+* `text_encoder` — `text_encoders/` の gemma 等
+* `clip_source` — `(from model)` または個別 checkpoint
+* `upscale_model` — `latent_upscale_models/` の LTX 用アップスケーラー(2x/4xを使う時のみ)
+
+**② LoRA(6スロット固定)**
+* `lora_N_on` (BOOLEAN) — ON/OFF
+* `lora_N` (COMBO) — ファイル選択(`None` で無効)
+* `lora_N_strength` (FLOAT) — 強度(0で実質スキップ)
+
+**③ Video Size(ライブプレビュー付き)**
+* `width / height / length / fps` — 編集と同時にノード上部のバッジが更新:
+  ```
+  1024×576 (16:9) · 97f @ 24fps = 4.04s
+  ```
+
+**④ Prompts**
+* `positive_prompt / negative_prompt` (multiline STRING)
+
+**⑤ Image Preprocess**
+* `image_max_dim` — リサイズ後の長辺/短辺
+* `image_resize_method` — `scale longer dimension` 等
+* `img_compression` — LTXVPreprocess の圧縮係数
+* `bypass_i2v` — 画像コンディショニングを無効化(text-to-video モード)
+* `i2v_strength` — 画像の影響度
+
+**⑥ Sampling (base pass)**
+* `seed`, `cfg_scale`
+* `base_sampler` — `euler_ancestral_cfg_pp` など
+* `base_sigmas` — マニュアル sigmas(カンマ区切り)
+
+**⑦ 2x Upscale(オプション)**
+* `enable_2x_upscale` — ON にすると LTXVLatentUpsampler で2倍化して再サンプル
+* `upscale_2x_sampler / sigmas / strength / bypass_i2v`
+
+**⑧ 4x Upscale(オプション)**
+* `enable_4x_upscale` — 2xの後にもう1段(=4x)
+* `upscale_4x_sampler / sigmas / strength / bypass_i2v`
+
+**⑨ Decode**
+* `vae_tile_size / vae_overlap / vae_temporal_size / vae_temporal_overlap` — `VAEDecodeTiled` のタイル設定
+
+#### 出力
+
+* `VIDEO` — `CreateVideo` の最終動画(SaveVideo に接続)
+* `frames` (IMAGE) — VAE デコード後のフレーム列
+* `audio` (AUDIO) — 同時に生成された音声
+* `info` (STRING) — `"1024×576 (16:9) · 97f @ 24fps = 4.04s | LoRAs: <a.safetensors:1>, <b:0.8> | 2x upscale ON"` のようなサマリ
+
+#### 10Eros モデル対応
+
+[TenStrip/LTX2.3-10Eros](https://huggingface.co/TenStrip/LTX2.3-10Eros) のような **video VAE + audio VAE + CLIP の重みが全部1ファイルに入った checkpoint** は、`checkpoints/` に置いて:
+
+* `model_name` = `10Eros_v1_bf16.safetensors`
+* `audio_vae_source` = `(from model)`
+* `video_vae_source` = `(from model)`
+* `clip_source` = `(from model)`
+
+と設定するだけで、内部で同じファイルから:
+- `CheckpointLoaderSimple` で video VAE を抽出
+- `LTXVAudioVAELoader` が `audio_vae.` プレフィックスから audio VAE を抽出
+- `LTXAVTextEncoderLoader` が CLIP-V を抽出
+
+を全部やってくれます。
+
+#### GGUF モデル対応
+
+`model_name` で `.gguf` ファイルを選ぶと、内部で **[ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF)** の `UnetLoaderGGUF` を呼んで MODEL をロードします(要 ComfyUI-GGUF インストール)。GGUF は VAE / CLIP がバンドルされていないので、`audio_vae_source`, `video_vae_source`, `clip_source` は別の checkpoint(例: 10Eros)を指定してください。
+
+#### ComfyMath 非依存
+
+内部で `fps_int = int(round(fps))` に変換するため、`CM_FloatToInt` などの ComfyMath ノードは一切不要です。
 
 ---
 
