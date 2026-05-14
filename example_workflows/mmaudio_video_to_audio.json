@@ -1,0 +1,462 @@
+{
+  "id": "7ea8a1e2-f8e7-4271-8214-1581d0e83965",
+  "revision": 0,
+  "last_node_id": 140,
+  "last_link_id": 32,
+  "nodes": [
+    {
+      "id": 110,
+      "type": "MMAudioFeatureUtilsLoader",
+      "pos": [
+        -180.199696307373,
+        -82.36709999999984
+      ],
+      "size": [
+        527.1017619323729,
+        167.5520147705078
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "bigvgan_vocoder_model",
+          "shape": 7,
+          "type": "VOCODER_MODEL",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "mmaudio_featureutils",
+          "type": "MMAUDIO_FEATUREUTILS",
+          "links": [
+            15
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MMAudioFeatureUtilsLoader"
+      },
+      "widgets_values": [
+        "mmaudio_vae_44k_fp16.safetensors",
+        "mmaudio_synchformer_fp16.safetensors",
+        "apple_DFN5B-CLIP-ViT-H-14-384_fp16.safetensors",
+        "44k",
+        "fp16"
+      ]
+    },
+    {
+      "id": 111,
+      "type": "MMAudioModelLoader",
+      "pos": [
+        -205.08187821838342,
+        187.24516518371578
+      ],
+      "size": [
+        559.4319963073729,
+        86.84000000000003
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "mmaudio_model",
+          "type": "MMAUDIO_MODEL",
+          "links": [
+            14
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MMAudioModelLoader"
+      },
+      "widgets_values": [
+        "mmaudio_large_44k_nsfw_gold_8.5k_final_fp16.safetensors",
+        "fp16"
+      ]
+    },
+    {
+      "id": 92,
+      "type": "MMAudioSampler",
+      "pos": [
+        750.0979656250006,
+        202.2999289361566
+      ],
+      "size": [
+        580.377227233887,
+        735.3512272338869
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mmaudio_model",
+          "type": "MMAUDIO_MODEL",
+          "link": 14
+        },
+        {
+          "name": "feature_utils",
+          "type": "MMAUDIO_FEATUREUTILS",
+          "link": 15
+        },
+        {
+          "name": "images",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 30
+        },
+        {
+          "name": "duration",
+          "type": "FLOAT",
+          "widget": {
+            "name": "duration"
+          },
+          "link": 32
+        }
+      ],
+      "outputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": [
+            20
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MMAudioSampler"
+      },
+      "widgets_values": [
+        8,
+        25,
+        4.5,
+        115925838992254,
+        "randomize",
+        "Intense fellatio ASMR — cute anime girl, glossy wet lips, thin drool threads, loud watery suction gluck-gluck, slippery tongue schlurpp schlurp curling under glans, viscous saliva nyucha guchu zuchu squelching louder & faster, rhythmic forward-back piston pap pan! papapapapan!! wet smacks, deep throat gllk-gllk gulps, sticky zuru-zuru pulls, puchu snap saliva strings, chapu chapu splash overflow\nLoud wet oral friction & pulsing suction dominant in stereo. Close-mic breathing: only sparse breathy leaks “…ん…はぁ…” slow, no words, no loud moans, “…んっ…あっ…” gradually building, few “…はぁっ！んっ…” sharp & hard, quick panting “…はぁはぁ…んっ…” accelerating, deep throat “…んぁ…はぁん…” press, trembling exhale “…はぁ…んっ…” right on the edge, climax “…はぁんっ！！” + throat jolts & convulsions “…はぁ…はぁん…” → shaky broken “…ぁ…”.\nLewd & sloppy buildup with increasingly desperate wet glucking → thick dorodoro plop-splurt-bulge ejaculation, heavy globs plopping & sliding down, subtle sporadic shaky exhales quietly layered & loosely synced to thrusting rhythm & intensity peaks.",
+        "words,moans,",
+        false,
+        false
+      ]
+    },
+    {
+      "id": 131,
+      "type": "SaveAudio",
+      "pos": [
+        1356.9323954125998,
+        201.8316142553712
+      ],
+      "size": [
+        313.47265625,
+        112
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 28
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveAudio"
+      },
+      "widgets_values": [
+        "audio/ComfyUI"
+      ]
+    },
+    {
+      "id": 137,
+      "type": "CLIPTextEncodeControlnet",
+      "pos": [
+        1359.8376010461707,
+        360.14159280636375
+      ],
+      "size": [
+        455.40158331909174,
+        370.069865829773
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": null
+        },
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPTextEncodeControlnet"
+      },
+      "widgets_values": [
+        "Intense passionate cowgirl sex ASMR, anime-style cute big-breasted girl enthusiastically riding on top in dominant female position, thin camisole and miniskirt fabric rustling shaka-shaka, frills swaying with soft rustle, sweaty skin causing cloth to stick and peel with subtle velcro-like beri-beri tearing sounds, bra straps sliding shuru-shuru down shoulders, loud wet rhythmic skin slapping PAP PAN! PAPAN! PAP PAPAN!! heavy flesh-on-flesh impacts, ass cheeks rippling with deep meaty thuds and jiggles, tempo starting medium and accelerating to fast continuous clapping echoes, super sticky viscous love juices squelching nyucha nyucha guchu guchu zuchu zuchu, thick nectar stretching into strings and snapping puchu, overflowing pussy juices splashing chapu chapu, deep churning guropu guropu grinds and bounces with every thrust and hip roll, high-pitched sweet anime girl subtle close-mic intimate ASMR breathing right in the ear, exclusively very occasional breathy erotic hot exhales and needy soft sighs no spoken words dialogue or frequent moaning, sparse and natural timed sparingly to hip movements like rare \"...haa...\" on slow drops, infrequent sharper \"...nn... haa...\" building subtly with rhythm, very few short urgent \"...haa! nn...\" only on hardest slaps, minimal rapid \"...haa haa nn...\" on intense grinds, long melting needy \"...nna... haaan...\" rarely on deepest strokes, light tension rising with trembling sparse \"...haa... nn...\" near edge, final intense climax with one strong \"...haaan!!\" and a few jolting \"...haa... haaan...\" fading quickly to shaky long soft exhale \"...a...\" , erotic immersive stereo soundscape, wet slaps sticky squelches and meaty impacts dominant and loud in the mix, girl's subtle sporadic breathy exhales layered intimately but quietly and infrequently, volume and pitch of rare sighs gently rising/falling synced only loosely to bounces thrusts and tempo acceleration, continuous lewd pleasure buildup leading to powerful shuddering orgasm with minimal vocal leakage"
+      ]
+    },
+    {
+      "id": 139,
+      "type": "DARASK RIFE Interpolation",
+      "pos": [
+        126.3165981607552,
+        384.8047270024168
+      ],
+      "size": [
+        276.5474609375,
+        178
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 29
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            30
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "DARASK RIFE Interpolation"
+      },
+      "widgets_values": [
+        16,
+        25,
+        1,
+        "flownet.pkl",
+        8,
+        true
+      ]
+    },
+    {
+      "id": 138,
+      "type": "DARASK Load Video Upload",
+      "pos": [
+        -204.38380183924454,
+        400.90982700241676
+      ],
+      "size": [
+        296.6724609375,
+        266
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            29
+          ]
+        },
+        {
+          "name": "frame_count",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "video_info",
+          "type": "DARASK_VIDEO_INFO",
+          "links": [
+            31
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "DARASK Load Video Upload"
+      },
+      "widgets_values": [
+        "(no videos in input/)",
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        "image"
+      ]
+    },
+    {
+      "id": 140,
+      "type": "DARASK Video Info",
+      "pos": [
+        181.7165895670055,
+        614.6684270024161
+      ],
+      "size": [
+        218.455078125,
+        206
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "video_info",
+          "type": "DARASK_VIDEO_INFO",
+          "link": 31
+        }
+      ],
+      "outputs": [
+        {
+          "name": "source_fps",
+          "type": "FLOAT",
+          "links": null
+        },
+        {
+          "name": "source_frame_count",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "source_duration",
+          "type": "FLOAT",
+          "links": null
+        },
+        {
+          "name": "source_width",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "source_height",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "loaded_fps",
+          "type": "FLOAT",
+          "links": null
+        },
+        {
+          "name": "loaded_frame_count",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "loaded_duration",
+          "type": "FLOAT",
+          "links": [
+            32
+          ]
+        },
+        {
+          "name": "loaded_width",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "loaded_height",
+          "type": "INT",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "DARASK Video Info"
+      }
+    }
+  ],
+  "links": [
+    [
+      14,
+      111,
+      0,
+      92,
+      0,
+      "MMAUDIO_MODEL"
+    ],
+    [
+      15,
+      110,
+      0,
+      92,
+      1,
+      "MMAUDIO_FEATUREUTILS"
+    ],
+    [
+      28,
+      92,
+      0,
+      131,
+      0,
+      "AUDIO"
+    ],
+    [
+      29,
+      138,
+      0,
+      139,
+      0,
+      "IMAGE"
+    ],
+    [
+      30,
+      139,
+      0,
+      92,
+      2,
+      "IMAGE"
+    ],
+    [
+      31,
+      138,
+      2,
+      140,
+      0,
+      "DARASK_VIDEO_INFO"
+    ],
+    [
+      32,
+      140,
+      7,
+      92,
+      3,
+      "FLOAT"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.6830134553650712,
+      "offset": [
+        1173.1558713704928,
+        345.53247299758283
+      ]
+    },
+    "workflowRendererVersion": "LG",
+    "frontendVersion": "1.43.18",
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
+  },
+  "version": 0.4
+}

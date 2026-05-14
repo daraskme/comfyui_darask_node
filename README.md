@@ -441,6 +441,8 @@ MMAudioSampler ──▶ AUDIO ──▶ SaveAudio
 * `Video Info` の `loaded_duration` を MMAudioSampler の duration に繋げば、補間で生成されるフレーム数と音声長がぴったり合う
 * RIFE モデル(`flownet.pkl`)は事前に `<ComfyUI>/models/rife/` に配置
 
+そのまま動かせる **完全なワークフロー JSON** が `example_workflows/mmaudio_video_to_audio.json` にあります。ComfyUI 上で右クリック → "Load" でドラッグ&ドロップしてください([ComfyUI-MMAudio](https://github.com/kijai/ComfyUI-MMAudio) の事前インストールが必要)。
+
 ---
 
 ## レシピ — 分岐ツリーで全シーンを1バッチに(推奨パターン)
@@ -628,5 +630,15 @@ Auto Queue 無しで `Iterate` を押した場合は1枚しか生成されませ
 
 ---
 
+## サンプルワークフロー
+
+`example_workflows/` 配下に DARASK ノードを組み合わせた完全なワークフロー JSON を置いています。ComfyUI 上で右クリック → "Load" でドラッグ&ドロップして使えます。
+
+| ファイル | 内容 |
+|---|---|
+| `mmaudio_video_to_audio.json` | 動画ファイル → RIFE でフレーム補間(16→25fps)→ MMAudio で音声生成 → SaveAudio。`DARASK Load Video (Upload)` + `DARASK RIFE Interpolation` + `DARASK Video Info` の組み合わせ例。[ComfyUI-MMAudio](https://github.com/kijai/ComfyUI-MMAudio) が必要 |
+
+---
+
 ## ライセンス
-MIT
+MIT(ただし `rife_internal/` 配下は派生元の MIT を継承)
