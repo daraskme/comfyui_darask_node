@@ -393,6 +393,8 @@ DARASK Folder Image Loader
 
 **フォルダ全部処理する場合**: Folder Image Loader を `Auto Advance` モード + `loop=False` にして、Auto Queue (instant) を有効化。最後の画像が処理されたら自動的に下流が `ExecutionBlocker` で止まり、ノードのバッジが緑の `(done)` に変わるので Auto Queue を OFF にしてください。
 
+そのまま動かせる **完全なワークフロー JSON** が `example_workflows/hiresfix_folder_exif.json` にあります。ComfyUI 上で右クリック → "Load" でドラッグ&ドロップしてください([comfyui-easy-use](https://github.com/yolain/ComfyUI-Easy-Use) の事前インストールが必要)。
+
 ---
 
 ## レシピ — 全パターン生成(1キューでバッチ)
@@ -636,6 +638,7 @@ Auto Queue 無しで `Iterate` を押した場合は1枚しか生成されませ
 
 | ファイル | 内容 |
 |---|---|
+| `hiresfix_folder_exif.json` | フォルダ内の画像を順に読み込み、EXIF から元のモデル/LoRA/プロンプト/サンプラー設定を復元して `easy hiresFix` でアップスケール → SaveImage。`DARASK Folder Image Loader` + `DARASK Exif Apply (Auto-detect)` を `easy pipeIn / hiresFix / preSampling / kSampler / pipeOut` と組み合わせた例。[comfyui-easy-use](https://github.com/yolain/ComfyUI-Easy-Use) が必要 |
 | `mmaudio_video_to_audio.json` | 動画ファイル → RIFE でフレーム補間(16→25fps)→ MMAudio で音声生成 → SaveAudio。`DARASK Load Video (Upload)` + `DARASK RIFE Interpolation` + `DARASK Video Info` の組み合わせ例。[ComfyUI-MMAudio](https://github.com/kijai/ComfyUI-MMAudio) が必要 |
 
 ---
