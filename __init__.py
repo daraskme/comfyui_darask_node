@@ -9,6 +9,8 @@ from .exif_apply import (
 from .latent_preset import DARASK_EmptyLatentPreset
 from .lora_loader import DARASK_LoraLoader
 from .prompt_cells import DARASK_PromptCell, DARASK_PromptCellOutput
+from .rife_loader import DARASK_RIFEInterpolation
+from .video_loader import DARASK_LoadVideoUpload, DARASK_VideoInfo
 
 
 NODE_CLASS_MAPPINGS = {
@@ -21,6 +23,9 @@ NODE_CLASS_MAPPINGS = {
     "DARASK Lora Loader": DARASK_LoraLoader,
     "DARASK Prompt Cell": DARASK_PromptCell,
     "DARASK Prompt Cell Output": DARASK_PromptCellOutput,
+    "DARASK Load Video Upload": DARASK_LoadVideoUpload,
+    "DARASK Video Info": DARASK_VideoInfo,
+    "DARASK RIFE Interpolation": DARASK_RIFEInterpolation,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -33,6 +38,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "DARASK Lora Loader": "DARASK Lora Loader",
     "DARASK Prompt Cell": "DARASK Prompt Cell",
     "DARASK Prompt Cell Output": "DARASK Prompt Cell Output (CLIP Encode)",
+    "DARASK Load Video Upload": "DARASK Load Video (Upload)",
+    "DARASK Video Info": "DARASK Video Info",
+    "DARASK RIFE Interpolation": "DARASK RIFE Interpolation",
 }
 
 WEB_DIRECTORY = "./web"
