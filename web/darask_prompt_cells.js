@@ -37,7 +37,27 @@ function findManagedSlots(node, prefix) {
     return slots;
 }
 
+// Preserve the user's (or workflow's) node size while ensuring it never
+// falls below the computed minimum. ComfyUI's addInput / removeInput
+// internally calls setSize(computeSize()), which would reset any manual
+// resize the user did — saving the size before slot manipulation and
+// restoring it afterwards keeps the user's layout intact.
+function preserveSize(node, savedSize) {
+    if (!node || !node.size || !Array.isArray(savedSize)) return;
+    let minSize = [0, 0];
+    if (typeof node.computeSize === "function") {
+        try { minSize = node.computeSize(); } catch (_) {}
+    }
+    node.size[0] = Math.max(savedSize[0] | 0, (minSize[0] | 0) || 0);
+    node.size[1] = Math.max(savedSize[1] | 0, (minSize[1] | 0) || 0);
+}
+
 function updateSlots(node, cfg) {
+    // Snapshot the size BEFORE we add/remove inputs (each addInput call
+    // can trigger an internal setSize(computeSize()) which would clobber
+    // the user's manual width/height).
+    const savedSize = node && node.size ? [node.size[0], node.size[1]] : null;
+
     const slots = findManagedSlots(node, cfg.prefix);
 
     // How many trailing empty slots are there?
@@ -71,13 +91,11 @@ function updateSlots(node, cfg) {
         }
     }
 
-    // Force a redraw / size recompute.
+    // Restore the saved size (only growing if widgets demand it).
+    preserveSize(node, savedSize);
+
     if (node.graph && node.graph.setDirtyCanvas) {
         node.graph.setDirtyCanvas(true, true);
-    }
-    if (typeof node.computeSize === "function" && node.size) {
-        const minH = node.computeSize()[1];
-        if (node.size[1] < minH) node.size[1] = minH;
     }
 }
 

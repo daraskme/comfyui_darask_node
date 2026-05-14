@@ -59,6 +59,21 @@ function refreshComboValues(node) {
     node.setDirtyCanvas(true, true);
 }
 
+// Preserve the user's manual node size across widget add/remove. ComfyUI /
+// LiteGraph tends to call setSize(computeSize()) after addWidget, which
+// would clobber any width/height the user dragged. We snapshot, then on
+// restore we only grow past the current size if widgets genuinely need
+// more room.
+function preserveSize(node, savedSize) {
+    if (!node || !node.size || !Array.isArray(savedSize)) return;
+    let minSize = [0, 0];
+    if (typeof node.computeSize === "function") {
+        try { minSize = node.computeSize(); } catch (_) {}
+    }
+    node.size[0] = Math.max(savedSize[0] | 0, (minSize[0] | 0) || 0);
+    node.size[1] = Math.max(savedSize[1] | 0, (minSize[1] | 0) || 0);
+}
+
 app.registerExtension({
     name: "darask.lora_loader",
 
@@ -70,6 +85,8 @@ app.registerExtension({
         // ---- Row management ----------------------------------------------
 
         nodeType.prototype.daraskAddRow = function (initial) {
+            const savedSize = this.size ? [this.size[0], this.size[1]] : null;
+
             const idx = (this._daraskNextIdx = (this._daraskNextIdx || 0) + 1);
 
             const initOn =
@@ -118,12 +135,16 @@ app.registerExtension({
             ensureLoraList().then(() => refreshComboValues(this));
 
             this._daraskMoveControlsToEnd();
-            this.setSize(this.computeSize());
+            // Restore the user's manual size (only growing if the new row
+            // genuinely doesn't fit). Don't blow away their resize.
+            preserveSize(this, savedSize);
             this.setDirtyCanvas(true, true);
             return idx;
         };
 
         nodeType.prototype.daraskRemoveLastRow = function () {
+            const savedSize = this.size ? [this.size[0], this.size[1]] : null;
+
             const groups = (this.widgets || [])
                 .filter((w) => w._daraskGroupIdx != null)
                 .map((w) => w._daraskGroupIdx);
@@ -132,7 +153,9 @@ app.registerExtension({
             this.widgets = (this.widgets || []).filter(
                 (w) => w._daraskGroupIdx !== maxIdx,
             );
-            this.setSize(this.computeSize());
+            // Keep the user's manual size — removing a row shouldn't auto-shrink
+            // the node back to the new minimum.
+            preserveSize(this, savedSize);
             this.setDirtyCanvas(true, true);
         };
 
@@ -183,12 +206,26 @@ app.registerExtension({
             ensureLoraList().then(() => refreshComboValues(this));
             this._daraskEnsureControls();
             this._daraskMoveControlsToEnd();
-            this.setSize(this.computeSize());
+            // Brand-new node — start at the computed minimum size.
+            if (typeof this.computeSize === "function") {
+                this.size = this.computeSize();
+            }
             return r;
         };
 
         const onConfigure = nodeType.prototype.onConfigure;
         nodeType.prototype.onConfigure = function (info) {
+            // The workflow JSON's saved size lives in `info.size`. ComfyUI's
+            // default configure() applies it, then our row-adding logic
+            // below would normally clobber it via internal setSize calls.
+            // Capture it up front and restore at the end.
+            const savedSize =
+                info && Array.isArray(info.size)
+                    ? [info.size[0], info.size[1]]
+                    : this.size
+                    ? [this.size[0], this.size[1]]
+                    : null;
+
             // Strip everything so super.configure doesn't try to apply
             // saved widget values to slots that no longer exist.
             this.widgets = [];
@@ -238,7 +275,9 @@ app.registerExtension({
             this._daraskEnsureControls();
             this._daraskMoveControlsToEnd();
             ensureLoraList().then(() => refreshComboValues(this));
-            this.setSize(this.computeSize());
+            // Restore the saved (or pre-existing) size — keeps the user's
+            // manual resize across workflow load.
+            preserveSize(this, savedSize);
             this.setDirtyCanvas(true, true);
             return r;
         };
