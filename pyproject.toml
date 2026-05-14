@@ -1,0 +1,23 @@
+[project]
+name = "comfyui_darask_node"
+description = "DARASK custom nodes: folder-driven image queue + EXIF/PNGinfo-driven model/LoRA/prompt restoration for upscale & hires-fix workflows, plus an aspect-ratio-annotated empty-latent preset."
+version = "0.1.0"
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "piexif",
+]
+
+[project.urls]
+Repository = "https://github.com/daraskme/comfyui_darask_node"
+"Bug Tracker" = "https://github.com/daraskme/comfyui_darask_node/issues"
+
+[tool.comfy]
+PublisherId = "daraskme"
+DisplayName = "DARASK Nodes"
+Icon = ""

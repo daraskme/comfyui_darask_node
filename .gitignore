@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Reference downloads from upstream repos — not part of the package
+_d2_reference/
