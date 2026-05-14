@@ -1,355 +1,63 @@
 // DARASK Lora Loader — frontend.
 //
-// A compact multi-LoRA stacker in one node. Each row has:
-//   - on/off toggle (left)
-//   - LoRA filename, click to open picker (middle)
-//   - strength number (right), click to edit, drag to scrub
+// Each LoRA row is three standard LiteGraph widgets: a toggle (on/off), a
+// combo (file picker, list pulled from /object_info/LoraLoader), and a
+// number (strength). "+ Add LoRA" and "− Remove Last" are litegraph
+// button widgets at the bottom of the node. No custom canvas drawing or
+// mouse hit-testing — that path had reliability problems on some
+// ComfyUI builds (clicks freezing the canvas). Using only built-in widget
+// types means LiteGraph handles draw/input itself.
 //
-// Inspired by rgthree's Power Lora Loader but standalone — no external
-// dependencies beyond ComfyUI's app + api.
+// Saved widgets_values format is a flat list of values in widget order
+// (per ComfyUI's normal serialization). The Python side groups them back
+// into (on, lora, strength) tuples by widget-name prefix `lora_N_*`.
 //
-// Widget value format per row: {on: bool, lora: string, strength: float, strengthTwo: float|null}
-// Saved into widgets_values via `node.serialize_widgets = true`.
+// rgthree Power Lora Loader workflows save as dict-shaped values
+// (`{on, lora, strength, strengthTwo}`); we detect that shape on load
+// and re-create the rows from it so old workflows keep working.
 
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 
 const NODE_NAME = "DARASK Lora Loader";
-const ROW_HEIGHT = 22;
-const PROP_SHOW_STRENGTHS = "Show Strengths";
-const PROP_SHOW_STRENGTHS_SINGLE = "Single";
-const PROP_SHOW_STRENGTHS_SEPARATE = "Model + Clip";
+const NONE_VALUE = "None";
 
-// Cache of available LoRA filenames, populated on demand.
-let LORA_LIST = null;
+let LORA_LIST = [NONE_VALUE];
+let LORA_LIST_LOADED = false;
 let LORA_LIST_PROMISE = null;
 
-async function loadLoraList(force = false) {
-    if (LORA_LIST && !force) return LORA_LIST;
+async function ensureLoraList() {
+    if (LORA_LIST_LOADED) return LORA_LIST;
     if (LORA_LIST_PROMISE) return LORA_LIST_PROMISE;
     LORA_LIST_PROMISE = (async () => {
         try {
             const resp = await api.fetchApi("/object_info/LoraLoader");
             const data = await resp.json();
-            LORA_LIST = data?.LoraLoader?.input?.required?.lora_name?.[0] || [];
+            const list = data?.LoraLoader?.input?.required?.lora_name?.[0];
+            if (Array.isArray(list) && list.length > 0) {
+                LORA_LIST = [NONE_VALUE, ...list];
+            }
         } catch (e) {
-            console.warn("DARASK Lora Loader: couldn't fetch LoRA list", e);
-            LORA_LIST = [];
+            console.warn("DARASK Lora Loader: failed to fetch LoRA list:", e);
         }
+        LORA_LIST_LOADED = true;
         return LORA_LIST;
     })();
     return LORA_LIST_PROMISE;
 }
 
-function fitString(ctx, str, maxW) {
-    if (!str) return "";
-    if (ctx.measureText(str).width <= maxW) return str;
-    let s = str;
-    while (s.length > 1 && ctx.measureText(s + "…").width > maxW) {
-        s = s.slice(0, -1);
+function refreshComboValues(node) {
+    // Any combo widgets we previously created point at the OLD LORA_LIST
+    // array (since we replaced it in place). Re-assign so the dropdown
+    // sees the new list.
+    if (!node.widgets) return;
+    for (const w of node.widgets) {
+        if (w._daraskKind === "name" && w.options) {
+            w.options.values = LORA_LIST;
+        }
     }
-    return s + "…";
+    node.setDirtyCanvas(true, true);
 }
-
-function clampRound(v, step) {
-    return Math.round(v / step) * step;
-}
-
-// ---------------------------------------------------------------------------
-// Row widget — one LoRA entry.
-// ---------------------------------------------------------------------------
-
-class DaraskLoraRowWidget {
-    constructor(name) {
-        this.name = name;
-        this.type = "custom";
-        this.value = { on: true, lora: null, strength: 1, strengthTwo: null };
-        this._hitAreas = {};
-        this._dragging = null;
-    }
-
-    get y() {
-        return this.last_y || 0;
-    }
-
-    serializeValue() {
-        return this.value;
-    }
-
-    computeSize(_width) {
-        return [0, ROW_HEIGHT];
-    }
-
-    draw(ctx, node, width, posY, height) {
-        this.last_y = posY;
-        const margin = 8;
-        const innerPad = 4;
-        const midY = posY + height / 2;
-
-        const sepMode =
-            node.properties?.[PROP_SHOW_STRENGTHS] === PROP_SHOW_STRENGTHS_SEPARATE;
-
-        ctx.save();
-        // Row background.
-        ctx.fillStyle = this.value.on ? "rgba(60,90,60,0.20)" : "rgba(40,40,40,0.25)";
-        ctx.fillRect(margin, posY + 1, width - margin * 2, height - 2);
-
-        // ----- Toggle (left) -----
-        const toggleW = 30;
-        const toggleX = margin + 4;
-        const tknobR = 6;
-        ctx.fillStyle = this.value.on ? "#4ade80" : "#555";
-        // Track
-        ctx.beginPath();
-        const trackY = midY - 5;
-        const trackH = 10;
-        const trackR = trackH / 2;
-        ctx.moveTo(toggleX + trackR, trackY);
-        ctx.lineTo(toggleX + toggleW - trackR, trackY);
-        ctx.arc(toggleX + toggleW - trackR, trackY + trackR, trackR, -Math.PI / 2, Math.PI / 2);
-        ctx.lineTo(toggleX + trackR, trackY + trackH);
-        ctx.arc(toggleX + trackR, trackY + trackR, trackR, Math.PI / 2, -Math.PI / 2);
-        ctx.fill();
-        // Knob
-        ctx.fillStyle = "#fff";
-        const knobX = this.value.on ? toggleX + toggleW - trackR : toggleX + trackR;
-        ctx.beginPath();
-        ctx.arc(knobX, midY, tknobR, 0, Math.PI * 2);
-        ctx.fill();
-        this._hitAreas.toggle = [toggleX, posY, toggleW + 4, height];
-
-        // ----- Strength widget(s) on the right -----
-        const strBoxW = 70;
-        const strBoxGap = 4;
-        const totalStrW = sepMode ? strBoxW * 2 + strBoxGap : strBoxW;
-        const strRight = width - margin - 4;
-        const strLeft = strRight - totalStrW;
-
-        const drawStrengthBox = (x, val, hitPrefix) => {
-            ctx.fillStyle = "rgba(255,255,255,0.08)";
-            ctx.fillRect(x, posY + 3, strBoxW, height - 6);
-
-            // − button
-            ctx.fillStyle = "#aaa";
-            ctx.font = "bold 12px sans-serif";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText("−", x + 10, midY);
-            // value
-            ctx.fillStyle = this.value.on ? "#fff" : "#999";
-            ctx.font = "11px sans-serif";
-            ctx.fillText(
-                (val ?? 0).toFixed(2),
-                x + strBoxW / 2,
-                midY,
-            );
-            // + button
-            ctx.fillStyle = "#aaa";
-            ctx.font = "bold 12px sans-serif";
-            ctx.fillText("+", x + strBoxW - 10, midY);
-
-            this._hitAreas[hitPrefix + "Dec"] = [x, posY, 20, height];
-            this._hitAreas[hitPrefix + "Inc"] = [x + strBoxW - 20, posY, 20, height];
-            this._hitAreas[hitPrefix + "Val"] = [x + 20, posY, strBoxW - 40, height];
-        };
-
-        drawStrengthBox(strLeft, this.value.strength, "str");
-        if (sepMode) {
-            const two =
-                this.value.strengthTwo != null
-                    ? this.value.strengthTwo
-                    : this.value.strength;
-            drawStrengthBox(strLeft + strBoxW + strBoxGap, two, "str2");
-        } else {
-            // ensure stale hit areas don't catch clicks
-            this._hitAreas.str2Dec = [0, -1, 0, 0];
-            this._hitAreas.str2Inc = [0, -1, 0, 0];
-            this._hitAreas.str2Val = [0, -1, 0, 0];
-        }
-
-        // ----- LoRA name (middle, fills remaining) -----
-        const nameX = toggleX + toggleW + innerPad + 6;
-        const nameW = strLeft - nameX - 6;
-        if (nameW > 20) {
-            ctx.fillStyle = this.value.on ? "#e5e5e5" : "#888";
-            ctx.font = "12px sans-serif";
-            ctx.textAlign = "left";
-            ctx.textBaseline = "middle";
-            const display = this.value.lora || "(click to choose LoRA)";
-            ctx.fillText(fitString(ctx, display, nameW), nameX, midY);
-        }
-        this._hitAreas.lora = [nameX - 4, posY, Math.max(0, nameW + 8), height];
-
-        ctx.restore();
-    }
-
-    _hitTest(pos) {
-        const [x, y] = pos;
-        for (const [name, [hx, hy, hw, hh]] of Object.entries(this._hitAreas)) {
-            if (hw <= 0 || hh <= 0) continue;
-            if (x >= hx && x <= hx + hw && y >= hy && y <= hy + hh) return name;
-        }
-        return null;
-    }
-
-    mouse(event, pos, node) {
-        if (event.type === "pointerdown") {
-            const hit = this._hitTest(pos);
-            if (!hit) return false;
-            this._dragging = { hit, startX: pos[0], startY: pos[1], moved: false };
-            return true;
-        }
-        if (event.type === "pointermove") {
-            if (!this._dragging) return false;
-            const dx = pos[0] - this._dragging.startX;
-            if (Math.abs(dx) > 2) this._dragging.moved = true;
-            // Drag-to-scrub on strength val
-            if (this._dragging.hit === "strVal" || this._dragging.hit === "str2Val") {
-                const which = this._dragging.hit === "str2Val" ? "strengthTwo" : "strength";
-                const base =
-                    this._dragging.startVal ??
-                    (this._dragging.startVal = this.value[which] ?? this.value.strength);
-                const newVal = clampRound(base + dx * 0.01, 0.01);
-                if (which === "strengthTwo") this.value.strengthTwo = newVal;
-                else this.value.strength = newVal;
-                node.setDirtyCanvas(true, true);
-            }
-            return true;
-        }
-        if (event.type === "pointerup") {
-            if (!this._dragging) return false;
-            const { hit, moved } = this._dragging;
-            this._dragging = null;
-            if (moved) return true;
-
-            if (hit === "toggle") {
-                this.value.on = !this.value.on;
-                node.setDirtyCanvas(true, true);
-            } else if (hit === "lora") {
-                this._showLoraChooser(event, node);
-            } else if (hit === "strDec" || hit === "strInc") {
-                const delta = hit === "strInc" ? 0.05 : -0.05;
-                this.value.strength = clampRound((this.value.strength ?? 1) + delta, 0.01);
-                node.setDirtyCanvas(true, true);
-            } else if (hit === "str2Dec" || hit === "str2Inc") {
-                const delta = hit === "str2Inc" ? 0.05 : -0.05;
-                const base =
-                    this.value.strengthTwo != null ? this.value.strengthTwo : this.value.strength;
-                this.value.strengthTwo = clampRound(base + delta, 0.01);
-                node.setDirtyCanvas(true, true);
-            } else if (hit === "strVal") {
-                this._promptValue("strength", node);
-            } else if (hit === "str2Val") {
-                this._promptValue("strengthTwo", node);
-            }
-            return true;
-        }
-        return false;
-    }
-
-    _promptValue(which, node) {
-        const cur =
-            which === "strengthTwo"
-                ? (this.value.strengthTwo != null ? this.value.strengthTwo : this.value.strength)
-                : this.value.strength;
-        const s = window.prompt(`${which}:`, String(cur ?? 1));
-        if (s == null) return;
-        const f = parseFloat(s);
-        if (Number.isFinite(f)) {
-            if (which === "strengthTwo") this.value.strengthTwo = f;
-            else this.value.strength = f;
-            node.setDirtyCanvas(true, true);
-        }
-    }
-
-    async _showLoraChooser(event, node) {
-        const all = await loadLoraList();
-        let pool = all.slice();
-        // Apply optional Match filter (regex stored in properties).
-        const match = (node.properties?.["Match"] || "").trim();
-        if (match) {
-            try {
-                const rx = new RegExp(match);
-                pool = pool.filter((n) => rx.test(n));
-            } catch (_) {}
-        }
-        if (!pool.length) {
-            window.alert("DARASK Lora Loader: no LoRAs found in loras/.");
-            return;
-        }
-
-        // Build context menu items.
-        const items = pool.map((name) => ({
-            content: name,
-            callback: () => {
-                this.value.lora = name;
-                if (!this.value.on) this.value.on = true;
-                node.setDirtyCanvas(true, true);
-            },
-        }));
-        new LiteGraph.ContextMenu(items, {
-            event: event,
-            scrollSpeed: 0.1,
-            title: "Choose LoRA",
-        });
-    }
-}
-
-// ---------------------------------------------------------------------------
-// "+ Add Lora" button widget.
-// ---------------------------------------------------------------------------
-
-class DaraskAddLoraButton {
-    constructor() {
-        this.name = "darask_add_lora";
-        this.type = "custom";
-        this.value = null;
-        this._hit = [0, 0, 0, 0];
-    }
-
-    serializeValue() {
-        return null;
-    }
-
-    computeSize(_width) {
-        return [0, 26];
-    }
-
-    draw(ctx, node, width, posY, height) {
-        const margin = 8;
-        const x = margin;
-        const w = width - margin * 2;
-        const h = height - 4;
-        ctx.save();
-        ctx.fillStyle = "rgba(70,130,90,0.35)";
-        ctx.strokeStyle = "rgba(140,220,170,0.5)";
-        ctx.lineWidth = 1;
-        ctx.fillRect(x, posY + 2, w, h);
-        ctx.strokeRect(x, posY + 2, w, h);
-        ctx.fillStyle = "#dfe";
-        ctx.font = "bold 12px sans-serif";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("➕ Add Lora", x + w / 2, posY + 2 + h / 2);
-        ctx.restore();
-        this._hit = [x, posY + 2, w, h];
-    }
-
-    mouse(event, pos, node) {
-        if (event.type !== "pointerup") return false;
-        const [x, y] = pos;
-        const [hx, hy, hw, hh] = this._hit;
-        if (x >= hx && x <= hx + hw && y >= hy && y <= hy + hh) {
-            node.daraskAddLoraRow();
-            return true;
-        }
-        return false;
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Node registration.
-// ---------------------------------------------------------------------------
 
 app.registerExtension({
     name: "darask.lora_loader",
@@ -357,166 +65,182 @@ app.registerExtension({
     async beforeRegisterNodeDef(nodeType, nodeData) {
         if (nodeData.name !== NODE_NAME) return;
 
-        // Pre-fetch the LoRA list so the chooser opens instantly.
-        loadLoraList();
-
         nodeType.prototype.serialize_widgets = true;
 
-        nodeType.prototype.daraskAddLoraRow = function (initial) {
-            const idx = (this._daraskRowCounter = (this._daraskRowCounter || 0) + 1);
-            const widget = new DaraskLoraRowWidget(`lora_${idx}`);
-            if (initial) widget.value = { ...widget.value, ...initial };
-            this.addCustomWidget(widget);
-            // Keep the "+ Add Lora" button at the bottom.
-            this._daraskReorderWidgets();
+        // ---- Row management ----------------------------------------------
+
+        nodeType.prototype.daraskAddRow = function (initial) {
+            const idx = (this._daraskNextIdx = (this._daraskNextIdx || 0) + 1);
+
+            const initOn =
+                initial && typeof initial.on === "boolean" ? initial.on : true;
+            const initName =
+                initial && typeof initial.lora === "string" && initial.lora
+                    ? initial.lora
+                    : NONE_VALUE;
+            const initStrength =
+                initial && typeof initial.strength === "number"
+                    ? initial.strength
+                    : 1.0;
+
+            const onW = this.addWidget(
+                "toggle",
+                `lora_${idx}_on`,
+                initOn,
+                () => {},
+                { on: "✓", off: "—" },
+            );
+            const nameW = this.addWidget(
+                "combo",
+                `lora_${idx}`,
+                initName,
+                () => {},
+                { values: LORA_LIST },
+            );
+            const strW = this.addWidget(
+                "number",
+                `lora_${idx}_strength`,
+                initStrength,
+                () => {},
+                { min: -4, max: 4, step: 0.05, precision: 2 },
+            );
+
+            for (const [w, kind] of [
+                [onW, "on"],
+                [nameW, "name"],
+                [strW, "strength"],
+            ]) {
+                w._daraskGroupIdx = idx;
+                w._daraskKind = kind;
+            }
+
+            // Make sure the combo's values reference the always-up-to-date list.
+            ensureLoraList().then(() => refreshComboValues(this));
+
+            this._daraskMoveControlsToEnd();
+            this.setSize(this.computeSize());
             this.setDirtyCanvas(true, true);
-            return widget;
+            return idx;
         };
 
-        nodeType.prototype.daraskRemoveRow = function (widget) {
-            const i = this.widgets.indexOf(widget);
-            if (i >= 0) {
-                this.widgets.splice(i, 1);
-                this.setDirtyCanvas(true, true);
+        nodeType.prototype.daraskRemoveLastRow = function () {
+            const groups = (this.widgets || [])
+                .filter((w) => w._daraskGroupIdx != null)
+                .map((w) => w._daraskGroupIdx);
+            if (!groups.length) return;
+            const maxIdx = Math.max(...groups);
+            this.widgets = (this.widgets || []).filter(
+                (w) => w._daraskGroupIdx !== maxIdx,
+            );
+            this.setSize(this.computeSize());
+            this.setDirtyCanvas(true, true);
+        };
+
+        // ---- Control buttons --------------------------------------------
+
+        nodeType.prototype._daraskEnsureControls = function () {
+            const hasAdd = (this.widgets || []).some((w) => w._daraskAddBtn);
+            if (!hasAdd) {
+                const b = this.addWidget(
+                    "button",
+                    "+ Add LoRA",
+                    null,
+                    () => {
+                        this.daraskAddRow();
+                    },
+                );
+                b._daraskAddBtn = true;
+            }
+            const hasRem = (this.widgets || []).some((w) => w._daraskRemBtn);
+            if (!hasRem) {
+                const b = this.addWidget(
+                    "button",
+                    "− Remove Last",
+                    null,
+                    () => {
+                        this.daraskRemoveLastRow();
+                    },
+                );
+                b._daraskRemBtn = true;
             }
         };
 
-        nodeType.prototype._daraskReorderWidgets = function () {
-            // Sort: row widgets first (preserving their order), then the add button last.
-            const rows = [];
-            const addBtn = [];
-            const other = [];
-            for (const w of this.widgets || []) {
-                if (w instanceof DaraskLoraRowWidget) rows.push(w);
-                else if (w instanceof DaraskAddLoraButton) addBtn.push(w);
-                else other.push(w);
-            }
-            this.widgets = [...other, ...rows, ...addBtn];
+        nodeType.prototype._daraskMoveControlsToEnd = function () {
+            const ctrls = (this.widgets || []).filter(
+                (w) => w._daraskAddBtn || w._daraskRemBtn,
+            );
+            const rest = (this.widgets || []).filter(
+                (w) => !w._daraskAddBtn && !w._daraskRemBtn,
+            );
+            this.widgets = [...rest, ...ctrls];
         };
+
+        // ---- Lifecycle ---------------------------------------------------
 
         const onNodeCreated = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {
-            const r = onNodeCreated?.apply(this);
-            if (!this.properties[PROP_SHOW_STRENGTHS]) {
-                this.properties[PROP_SHOW_STRENGTHS] = PROP_SHOW_STRENGTHS_SINGLE;
-            }
-            if (this.properties["Match"] == null) {
-                this.properties["Match"] = "";
-            }
-            // Add the "+ Add Lora" button on first creation.
-            this.addCustomWidget(new DaraskAddLoraButton());
-            this._daraskReorderWidgets();
+            const r = onNodeCreated?.apply(this, arguments);
+            ensureLoraList().then(() => refreshComboValues(this));
+            this._daraskEnsureControls();
+            this._daraskMoveControlsToEnd();
             this.setSize(this.computeSize());
             return r;
         };
 
         const onConfigure = nodeType.prototype.onConfigure;
         nodeType.prototype.onConfigure = function (info) {
-            // Rebuild row widgets from saved widgets_values.
-            // Clear existing row widgets first to avoid duplicates.
-            this.widgets = (this.widgets || []).filter(
-                (w) => !(w instanceof DaraskLoraRowWidget),
-            );
-            for (const v of info?.widgets_values || []) {
-                if (v && typeof v === "object" && "lora" in v && "strength" in v) {
-                    this.daraskAddLoraRow(v);
-                }
-            }
-            // Restore button & reorder.
-            if (!(this.widgets || []).some((w) => w instanceof DaraskAddLoraButton)) {
-                this.addCustomWidget(new DaraskAddLoraButton());
-            }
-            this._daraskReorderWidgets();
-            const r = onConfigure?.apply(this, arguments);
-            this.setDirtyCanvas(true, true);
-            return r;
-        };
+            // Strip everything so super.configure doesn't try to apply
+            // saved widget values to slots that no longer exist.
+            this.widgets = [];
+            this._daraskNextIdx = 0;
 
-        // Right-click on a row → context menu (toggle / move / remove).
-        const getSlotMenuOptions = nodeType.prototype.getSlotMenuOptions;
-        nodeType.prototype.getSlotMenuOptions = function (slot) {
-            return getSlotMenuOptions?.apply(this, arguments);
-        };
-        const getSlotInPosition = nodeType.prototype.getSlotInPosition;
-        nodeType.prototype.getSlotInPosition = function (cx, cy) {
-            const slot = getSlotInPosition?.apply(this, arguments);
-            if (slot) return slot;
-            // Find which widget the user clicked on (if any).
-            let target = null;
-            const localY = cy - this.pos[1];
-            for (const w of this.widgets || []) {
-                if (w instanceof DaraskLoraRowWidget && w.last_y != null) {
-                    if (localY >= w.last_y && localY <= w.last_y + ROW_HEIGHT) {
-                        target = w;
-                        break;
+            const r = onConfigure?.apply(this, arguments);
+
+            const values = info?.widgets_values || [];
+
+            // 1) rgthree Power Lora Loader format: dicts with {lora, ...}.
+            const dictRows = values.filter(
+                (v) =>
+                    v &&
+                    typeof v === "object" &&
+                    !Array.isArray(v) &&
+                    typeof v.lora !== "undefined",
+            );
+
+            if (dictRows.length > 0) {
+                for (const v of dictRows) {
+                    this.daraskAddRow({
+                        on: typeof v.on === "boolean" ? v.on : true,
+                        lora: typeof v.lora === "string" ? v.lora : NONE_VALUE,
+                        strength:
+                            typeof v.strength === "number" ? v.strength : 1.0,
+                    });
+                }
+            } else {
+                // 2) Our own split format: (bool, string, number) triplets.
+                for (let i = 0; i + 2 < values.length; ) {
+                    const a = values[i];
+                    const b = values[i + 1];
+                    const c = values[i + 2];
+                    if (
+                        typeof a === "boolean" &&
+                        typeof b === "string" &&
+                        typeof c === "number"
+                    ) {
+                        this.daraskAddRow({ on: a, lora: b, strength: c });
+                        i += 3;
+                    } else {
+                        i++;
                     }
                 }
             }
-            if (target) {
-                return { widget: target, output: { type: "DARASK LORA ROW" } };
-            }
-            return null;
-        };
 
-        const _getSlotMenu = nodeType.prototype.getSlotMenuOptions;
-        nodeType.prototype.getSlotMenuOptions = function (slot) {
-            if (slot?.widget instanceof DaraskLoraRowWidget) {
-                const w = slot.widget;
-                const idx = this.widgets.indexOf(w);
-                const rowsOnly = (this.widgets || []).filter(
-                    (x) => x instanceof DaraskLoraRowWidget,
-                );
-                const rowIdx = rowsOnly.indexOf(w);
-                const items = [
-                    {
-                        content: `${w.value.on ? "⚫ Disable" : "🟢 Enable"}`,
-                        callback: () => {
-                            w.value.on = !w.value.on;
-                            this.setDirtyCanvas(true, true);
-                        },
-                    },
-                    {
-                        content: "📁 Change LoRA…",
-                        callback: () => w._showLoraChooser({}, this),
-                    },
-                    null,
-                    {
-                        content: "⬆️ Move Up",
-                        disabled: rowIdx <= 0,
-                        callback: () => {
-                            const prev = rowsOnly[rowIdx - 1];
-                            const i = this.widgets.indexOf(w);
-                            const j = this.widgets.indexOf(prev);
-                            this.widgets[i] = prev;
-                            this.widgets[j] = w;
-                            this.setDirtyCanvas(true, true);
-                        },
-                    },
-                    {
-                        content: "⬇️ Move Down",
-                        disabled: rowIdx >= rowsOnly.length - 1,
-                        callback: () => {
-                            const next = rowsOnly[rowIdx + 1];
-                            const i = this.widgets.indexOf(w);
-                            const j = this.widgets.indexOf(next);
-                            this.widgets[i] = next;
-                            this.widgets[j] = w;
-                            this.setDirtyCanvas(true, true);
-                        },
-                    },
-                    null,
-                    {
-                        content: "🗑️ Remove",
-                        callback: () => this.daraskRemoveRow(w),
-                    },
-                ];
-                new LiteGraph.ContextMenu(items, {
-                    title: "DARASK LoRA",
-                    event: window.event,
-                });
-                return undefined;
-            }
-            return _getSlotMenu?.apply(this, arguments);
+            this._daraskEnsureControls();
+            this._daraskMoveControlsToEnd();
+            ensureLoraList().then(() => refreshComboValues(this));
+            this.setSize(this.computeSize());
+            this.setDirtyCanvas(true, true);
+            return r;
         };
     },
 });

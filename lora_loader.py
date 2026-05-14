@@ -13,11 +13,23 @@ The widget value format mirrors rgthree's so saved workflows look familiar
 from __future__ import annotations
 
 import os
+import re
 from typing import Union
 
 import folder_paths
 
 from nodes import LoraLoader
+
+
+# Widget naming convention used by web/darask_lora_loader.js
+# Each row generates three kwargs:
+#   lora_<N>_on        BOOLEAN
+#   lora_<N>           STRING  (lora filename or "None")
+#   lora_<N>_strength  FLOAT
+_RE_NAME = re.compile(r"^lora_(\d+)$")
+_RE_ON = re.compile(r"^lora_(\d+)_on$")
+_RE_STRENGTH = re.compile(r"^lora_(\d+)_strength$")
+_RE_STRENGTH_CLIP = re.compile(r"^lora_(\d+)_strength_clip$")
 
 
 class _AnyType(str):
@@ -113,27 +125,96 @@ class DARASK_LoraLoader:
             "hidden": {},
         }
 
+    @staticmethod
+    def _collect_loras(kwargs: dict) -> "list[tuple[int, dict]]":
+        """
+        Walk kwargs and assemble a list of (index, spec) tuples sorted by
+        index. Accepts two save formats:
+
+        * **Split format** (current frontend) — three keys per row:
+          `lora_N_on` (bool), `lora_N` (str), `lora_N_strength` (float),
+          plus optional `lora_N_strength_clip` (float).
+        * **Dict format** (legacy / rgthree-compatible) — one key per row:
+          `lora_N` = `{on, lora, strength, strengthTwo}`.
+
+        Both can coexist; the dict's fields win over individual keys for
+        the same index.
+        """
+        rows: dict[int, dict] = {}
+        for key, val in kwargs.items():
+            if not isinstance(key, str):
+                continue
+            k = key.lower()
+
+            # Dict-format (lora_N = {on, lora, strength, strengthTwo})
+            m = _RE_NAME.match(k)
+            if m and isinstance(val, dict) and ("lora" in val or "on" in val):
+                n = int(m.group(1))
+                rows.setdefault(n, {})
+                rows[n]["on"] = bool(val.get("on", True))
+                rows[n]["lora"] = val.get("lora", "")
+                rows[n]["strength"] = val.get("strength", 1.0)
+                rows[n]["strength_clip"] = val.get("strengthTwo")
+                continue
+
+            # Split-format: lora_N (str)
+            if m and isinstance(val, str):
+                n = int(m.group(1))
+                rows.setdefault(n, {})
+                rows[n].setdefault("on", True)
+                rows[n].setdefault("strength", 1.0)
+                rows[n]["lora"] = val
+                continue
+
+            # lora_N_on (bool)
+            m = _RE_ON.match(k)
+            if m:
+                n = int(m.group(1))
+                rows.setdefault(n, {})
+                rows[n]["on"] = bool(val)
+                continue
+
+            # lora_N_strength (float)
+            m = _RE_STRENGTH.match(k)
+            if m:
+                n = int(m.group(1))
+                rows.setdefault(n, {})
+                try:
+                    rows[n]["strength"] = float(val)
+                except (TypeError, ValueError):
+                    rows[n]["strength"] = 1.0
+                continue
+
+            # lora_N_strength_clip (float, optional override)
+            m = _RE_STRENGTH_CLIP.match(k)
+            if m:
+                n = int(m.group(1))
+                rows.setdefault(n, {})
+                try:
+                    rows[n]["strength_clip"] = float(val)
+                except (TypeError, ValueError):
+                    pass
+                continue
+
+        return sorted(rows.items(), key=lambda kv: kv[0])
+
     def run(self, model=None, clip=None, **kwargs):
         # Nothing to do if there's no model to stack onto — pass through.
         if model is None:
             return (model, clip)
 
         loader = LoraLoader()
-        for key, val in kwargs.items():
-            if not isinstance(key, str) or not key.lower().startswith("lora_"):
+        for idx, spec in self._collect_loras(kwargs):
+            if not spec.get("on", False):
                 continue
-            if not isinstance(val, dict):
-                continue
-            if not val.get("on"):
-                continue
-            name = val.get("lora")
+            name = spec.get("lora", "")
             if not name or name == "None":
                 continue
             try:
-                strength_model = float(val.get("strength", 1.0))
+                strength_model = float(spec.get("strength", 1.0))
             except (TypeError, ValueError):
                 strength_model = 1.0
-            two = val.get("strengthTwo")
+            two = spec.get("strength_clip")
             if two in (None, ""):
                 strength_clip = strength_model
             else:
@@ -141,7 +222,6 @@ class DARASK_LoraLoader:
                     strength_clip = float(two)
                 except (TypeError, ValueError):
                     strength_clip = strength_model
-            # Skip pure no-ops.
             if strength_model == 0 and strength_clip == 0:
                 continue
             resolved = _resolve_lora(name)
@@ -150,9 +230,9 @@ class DARASK_LoraLoader:
                 continue
             try:
                 if clip is None:
-                    # Model-only: pass strength_clip=0 so LoraLoader doesn't
-                    # complain about a missing clip.
-                    model, _ = loader.load_lora(model, clip, resolved, strength_model, 0)
+                    model, _ = loader.load_lora(
+                        model, clip, resolved, strength_model, 0
+                    )
                 else:
                     model, clip = loader.load_lora(
                         model, clip, resolved, strength_model, strength_clip
