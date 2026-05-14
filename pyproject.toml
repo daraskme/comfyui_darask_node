@@ -1,7 +1,7 @@
 [project]
 name = "comfyui_darask_node"
 description = "DARASK custom nodes: folder-driven image queue + EXIF/PNGinfo-driven model/LoRA/prompt restoration for upscale & hires-fix workflows, plus an aspect-ratio-annotated empty-latent preset."
-version = "0.1.0"
+version = "0.2.0"
 license = {text = "MIT"}
 readme = "README.md"
 requires-python = ">=3.10"
