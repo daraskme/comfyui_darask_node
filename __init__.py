@@ -7,6 +7,7 @@ from .exif_apply import (
     DARASK_ExifApplySDXL,
 )
 from .latent_preset import DARASK_EmptyLatentPreset
+from .lora_loader import DARASK_LoraLoader
 from .prompt_cells import DARASK_PromptCell, DARASK_PromptCellOutput
 
 
@@ -17,6 +18,7 @@ NODE_CLASS_MAPPINGS = {
     "DARASK Exif Apply Anima": DARASK_ExifApplyAnima,
     "DARASK Exif Apply SDXL": DARASK_ExifApplySDXL,
     "DARASK Empty Latent Preset": DARASK_EmptyLatentPreset,
+    "DARASK Lora Loader": DARASK_LoraLoader,
     "DARASK Prompt Cell": DARASK_PromptCell,
     "DARASK Prompt Cell Output": DARASK_PromptCellOutput,
 }
@@ -28,6 +30,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "DARASK Exif Apply Anima": "DARASK Exif Apply (Anima / UNET stack)",
     "DARASK Exif Apply SDXL": "DARASK Exif Apply (SDXL / Checkpoint)",
     "DARASK Empty Latent Preset": "DARASK Empty Latent (Preset)",
+    "DARASK Lora Loader": "DARASK Lora Loader",
     "DARASK Prompt Cell": "DARASK Prompt Cell",
     "DARASK Prompt Cell Output": "DARASK Prompt Cell Output (CLIP Encode)",
 }

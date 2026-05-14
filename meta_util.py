@@ -358,8 +358,9 @@ def _extract_loras_from_comfy_prompt(prompt_json: dict) -> list[tuple[str, float
         if not isinstance(inputs, dict):
             continue
 
-        # rgthree Power Lora Loader: lora_1, lora_2, ... entries are dicts {on, lora, strength, strengthTwo}
-        if "Power Lora Loader" in ct:
+        # rgthree Power Lora Loader / DARASK Lora Loader — same widget value
+        # format: lora_N entries are dicts {on, lora, strength, strengthTwo}.
+        if "Power Lora Loader" in ct or "DARASK Lora Loader" in ct:
             for v in inputs.values():
                 if isinstance(v, dict) and "lora" in v and "on" in v:
                     if not v.get("on"):
