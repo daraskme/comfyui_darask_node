@@ -189,41 +189,56 @@ def extract_loras(prompt: str) -> tuple[str, list[tuple[str, float, float]]]:
     return cleaned, loras
 
 
-def resolve_model_file(name: str, folder_type: str) -> str | None:
+def resolve_model_file(name: str, folder_type) -> str | None:
     """
     Find the best matching file in a ComfyUI model folder.
     Tries exact > basename > substring matches across allowed extensions.
+
+    `folder_type` may be a single folder name (str) or an iterable of folder
+    names to try in order — the first folder that yields a match wins. The
+    iterable form is how callers search across legacy + canonical folder
+    aliases (e.g. ("text_encoders", "clip")).
     """
     if not name:
         return None
-    available = folder_paths.get_filename_list(folder_type)
-    if not available:
-        return None
+
+    if isinstance(folder_type, str):
+        folder_types = [folder_type]
+    else:
+        folder_types = list(folder_type)
 
     name_norm = name.replace("\\", "/").strip()
     name_lower = name_norm.lower()
     name_base = os.path.splitext(os.path.basename(name_norm))[0].lower()
 
-    # 1. Exact match (case-insensitive, normalized separators)
-    for f in available:
-        if f.replace("\\", "/").lower() == name_lower:
-            return f
+    for ft in folder_types:
+        try:
+            available = folder_paths.get_filename_list(ft)
+        except Exception:
+            available = []
+        if not available:
+            continue
 
-    # 2. Basename match without extension
-    for f in available:
-        f_base = os.path.splitext(os.path.basename(f))[0].lower()
-        if f_base == name_base:
-            return f
+        # 1. Exact match (case-insensitive, normalized separators)
+        for f in available:
+            if f.replace("\\", "/").lower() == name_lower:
+                return f
 
-    # 3. Substring match on basename (one direction)
-    candidates = []
-    for f in available:
-        f_base = os.path.splitext(os.path.basename(f))[0].lower()
-        if name_base and (name_base in f_base or f_base in name_base):
-            candidates.append((abs(len(f_base) - len(name_base)), f))
-    if candidates:
-        candidates.sort()
-        return candidates[0][1]
+        # 2. Basename match without extension
+        for f in available:
+            f_base = os.path.splitext(os.path.basename(f))[0].lower()
+            if f_base == name_base:
+                return f
+
+        # 3. Substring match on basename (one direction)
+        candidates = []
+        for f in available:
+            f_base = os.path.splitext(os.path.basename(f))[0].lower()
+            if name_base and (name_base in f_base or f_base in name_base):
+                candidates.append((abs(len(f_base) - len(name_base)), f))
+        if candidates:
+            candidates.sort()
+            return candidates[0][1]
 
     return None
 
@@ -285,6 +300,14 @@ _CHECKPOINT_HINTS = (
     "UnetLoaderGGUF", "easy fullLoader", "easy fullkSampler",
     "D2 Checkpoint Loader", "D2 Load Diffusion Model",
 )
+_UNET_LOADER_HINTS = (
+    "UNETLoader", "UnetLoaderGGUF", "D2 Load Diffusion Model",
+)
+_CLIP_LOADER_HINTS = (
+    "CLIPLoader", "DualCLIPLoader", "TripleCLIPLoader", "QuadrupleCLIPLoader",
+    "CLIPLoaderGGUF", "DualCLIPLoaderGGUF",
+)
+_VAE_LOADER_HINTS = ("VAELoader",)
 _EMPTY_LATENT_HINTS = (
     "EmptyLatentImage", "EmptySD3LatentImage", "EmptyHunyuanLatentVideo",
     "EmptyMochiLatentVideo",
@@ -430,6 +453,122 @@ def _extract_ckpt_from_comfy_prompt(prompt_json: dict) -> str:
     return ""
 
 
+def _extract_model_loader_info(prompt_json: dict) -> dict:
+    """
+    Identify how the source workflow loaded its diffusion model.
+
+    Returns one of:
+        {"kind": "checkpoint", "name": "..."}        — CheckpointLoaderSimple / easy fullLoader
+        {"kind": "unet",       "name": "...",
+         "weight_dtype": "..."}                       — UNETLoader / UnetLoaderGGUF
+        {"kind": "", "name": ""}                      — nothing matched
+    The first match wins, with UNET-style loaders preferred only when a
+    plain CheckpointLoader is absent (some "easy" loaders are detected as
+    checkpoints because they output MODEL+CLIP+VAE bundles).
+    """
+    checkpoint_hit: dict | None = None
+    unet_hit: dict | None = None
+
+    for node in prompt_json.values():
+        if not isinstance(node, dict):
+            continue
+        ct = str(node.get("class_type", ""))
+        inputs = node.get("inputs", {})
+        if not isinstance(inputs, dict):
+            continue
+
+        if any(h in ct for h in _UNET_LOADER_HINTS):
+            name = ""
+            for key in ("unet_name", "model_name", "ckpt_name", "checkpoint"):
+                v = inputs.get(key)
+                if isinstance(v, str) and v:
+                    name = v
+                    break
+            if name and unet_hit is None:
+                weight_dtype = inputs.get("weight_dtype")
+                unet_hit = {
+                    "kind": "unet",
+                    "name": name,
+                    "weight_dtype": str(weight_dtype) if isinstance(weight_dtype, str) else "default",
+                }
+            continue
+
+        if any(h in ct for h in _CHECKPOINT_HINTS):
+            name = ""
+            for key in ("ckpt_name", "unet_name", "model_name", "checkpoint"):
+                v = inputs.get(key)
+                if isinstance(v, str) and v:
+                    name = v
+                    break
+            if name and checkpoint_hit is None:
+                checkpoint_hit = {"kind": "checkpoint", "name": name}
+
+    return checkpoint_hit or unet_hit or {"kind": "", "name": ""}
+
+
+def _extract_clip_loader_info(prompt_json: dict) -> dict:
+    """
+    Find a CLIP/text-encoder loader in the workflow.
+
+    Returns {"names": [...], "type": "stable_diffusion"} or {"names": [], "type": ""}.
+    Multi-clip loaders (DualCLIPLoader, TripleCLIPLoader) return every wired
+    clip_nameN in order.
+    """
+    for node in prompt_json.values():
+        if not isinstance(node, dict):
+            continue
+        ct = str(node.get("class_type", ""))
+        if not any(h in ct for h in _CLIP_LOADER_HINTS):
+            continue
+        inputs = node.get("inputs", {})
+        if not isinstance(inputs, dict):
+            continue
+
+        names: list[str] = []
+        single = inputs.get("clip_name")
+        if isinstance(single, str) and single:
+            names.append(single)
+        i = 1
+        while True:
+            v = inputs.get(f"clip_name{i}")
+            if not isinstance(v, str) or not v:
+                # also tolerate clip_name_1 style (rare)
+                v2 = inputs.get(f"clip_name_{i}")
+                if isinstance(v2, str) and v2:
+                    names.append(v2)
+                else:
+                    break
+            else:
+                names.append(v)
+            i += 1
+        if not names:
+            continue
+
+        clip_type = inputs.get("type") or inputs.get("clip_type") or "stable_diffusion"
+        if not isinstance(clip_type, str):
+            clip_type = "stable_diffusion"
+        return {"names": names, "type": clip_type}
+
+    return {"names": [], "type": ""}
+
+
+def _extract_vae_loader_info(prompt_json: dict) -> str:
+    """Find a VAELoader's `vae_name` in the workflow, or empty string."""
+    for node in prompt_json.values():
+        if not isinstance(node, dict):
+            continue
+        ct = str(node.get("class_type", ""))
+        if not any(h in ct for h in _VAE_LOADER_HINTS):
+            continue
+        inputs = node.get("inputs", {})
+        if not isinstance(inputs, dict):
+            continue
+        v = inputs.get("vae_name")
+        if isinstance(v, str) and v:
+            return v
+    return ""
+
+
 def _extract_size_from_comfy_prompt(prompt_json: dict) -> tuple[int, int]:
     for node in prompt_json.values():
         if not isinstance(node, dict):
@@ -498,10 +637,13 @@ def parse_metadata(img_or_info) -> dict[str, Any]:
             if isinstance(prompt_json, dict):
                 pos, neg = _extract_prompts_from_comfy_prompt(prompt_json)
                 comfy_loras = _extract_loras_from_comfy_prompt(prompt_json)
-                ckpt = _extract_ckpt_from_comfy_prompt(prompt_json)
+                model_info = _extract_model_loader_info(prompt_json)
+                clip_info = _extract_clip_loader_info(prompt_json)
+                vae_name = _extract_vae_loader_info(prompt_json)
                 w, h = _extract_size_from_comfy_prompt(prompt_json)
                 samp = _extract_sampler_from_comfy_prompt(prompt_json)
 
+                ckpt = model_info.get("name") or _extract_ckpt_from_comfy_prompt(prompt_json)
                 params = {
                     "Steps": str(samp.get("steps", "")),
                     "Sampler": str(samp.get("sampler_name", "")),
@@ -510,6 +652,7 @@ def parse_metadata(img_or_info) -> dict[str, Any]:
                     "Seed": str(samp.get("seed", "")),
                     "Size": f"{w}x{h}" if (w and h) else "",
                     "Model": ckpt,
+                    "VAE": vae_name,
                     "Denoising strength": str(samp.get("denoise", "")),
                 }
                 params = {k: v for k, v in params.items() if v not in ("", "0")}
@@ -518,6 +661,9 @@ def parse_metadata(img_or_info) -> dict[str, Any]:
                     "negative": neg,
                     "params": params,
                     "comfy_loras": comfy_loras,
+                    "model_loader": model_info,
+                    "clip_loader": clip_info,
+                    "vae_loader": vae_name,
                     "raw_text": json.dumps(prompt_json, indent=2, ensure_ascii=False)[:8000],
                 }
         except Exception:
@@ -527,6 +673,9 @@ def parse_metadata(img_or_info) -> dict[str, Any]:
     raw = get_raw_metadata(items)
     parsed = parse_a1111(raw)
     parsed["comfy_loras"] = []
+    parsed["model_loader"] = {"kind": "", "name": ""}
+    parsed["clip_loader"] = {"names": [], "type": ""}
+    parsed["vae_loader"] = ""
     parsed["raw_text"] = raw
     return parsed
 
