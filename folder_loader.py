@@ -8,16 +8,81 @@ plus its EXIF metadata, mask, dimensions, and prompt strings.
 Auto-advance cursor is keyed by the node's workflow ID so it survives
 instance recreation (workflow edits, hot-reloads). Folder / sort changes
 auto-reset the cursor so a different listing starts from index 0.
+
+`auto_queue_all = True` makes the node *self-enqueue* the same workflow
+once per image until the whole folder is processed — so a single press of
+the regular Queue Prompt button is enough to chew through the entire
+folder (no need to leave Auto Queue / instant turned on).
 """
 from __future__ import annotations
 
 import os
+import time
+import uuid as _uuid
 
 import torch
 
 from comfy_execution.graph_utils import ExecutionBlocker
 
 from . import meta_util
+
+
+def _enqueue_self(prompt_dict, extra_pnginfo) -> bool:
+    """
+    Programmatically push another copy of the current workflow onto
+    ComfyUI's prompt queue. Returns True on success.
+
+    Equivalent to one press of the frontend's "Queue Prompt" button —
+    used to chain through every file in the folder from a single user
+    queue press when `auto_queue_all` is on.
+    """
+    try:
+        from server import PromptServer  # type: ignore
+        from nodes import NODE_CLASS_MAPPINGS  # type: ignore
+    except Exception as e:
+        print(f"DARASK Folder Image Loader: cannot import PromptServer ({e})")
+        return False
+
+    ps = getattr(PromptServer, "instance", None)
+    if ps is None or not isinstance(prompt_dict, dict):
+        return False
+
+    # Output nodes = anything with class-level OUTPUT_NODE=True.
+    outputs_to_execute: list[str] = []
+    for nid, node_data in prompt_dict.items():
+        if not isinstance(node_data, dict):
+            continue
+        ct = node_data.get("class_type")
+        if not ct:
+            continue
+        klass = NODE_CLASS_MAPPINGS.get(ct)
+        if klass is not None and getattr(klass, "OUTPUT_NODE", False):
+            outputs_to_execute.append(nid)
+    if not outputs_to_execute:
+        return False
+
+    # Build the same 6-tuple PromptServer.put uses on the /prompt endpoint.
+    number = ps.number if hasattr(ps, "number") else 0
+    if hasattr(ps, "number"):
+        ps.number += 1
+    prompt_id = str(_uuid.uuid4())
+    extra_data: dict = {"create_time": int(time.time() * 1000)}
+    if extra_pnginfo:
+        extra_data["extra_pnginfo"] = extra_pnginfo
+    if getattr(ps, "client_id", None) is not None:
+        extra_data["client_id"] = ps.client_id
+    sensitive: dict = {}
+
+    try:
+        ps.prompt_queue.put(
+            (number, prompt_id, prompt_dict, extra_data, outputs_to_execute, sensitive)
+        )
+        return True
+    except Exception as e:
+        print(f"DARASK Folder Image Loader: self-enqueue failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
 
 
 class DARASK_FolderImageLoader:
@@ -42,8 +107,22 @@ class DARASK_FolderImageLoader:
                 "order_by": (["A-Z", "Z-A"], {"default": "A-Z"}),
                 "loop": ("BOOLEAN", {"default": True}),
                 "reset": ("BOOLEAN", {"default": False}),
+                "auto_queue_all": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": (
+                        "Auto Advance mode only: after each generated image, "
+                        "the node enqueues another copy of the workflow so a "
+                        "single press of the regular Queue Prompt button "
+                        "processes the entire folder. Turn off to require one "
+                        "manual queue press per image."
+                    ),
+                }),
             },
-            "hidden": {"unique_id": "UNIQUE_ID"},
+            "hidden": {
+                "unique_id": "UNIQUE_ID",
+                "prompt": "PROMPT",
+                "extra_pnginfo": "EXTRA_PNGINFO",
+            },
         }
 
     RETURN_TYPES = (
@@ -69,9 +148,11 @@ class DARASK_FolderImageLoader:
         # so the queue actually moves / the cursor zeros.
         if mode == "Auto Advance" or sort_by == "Random" or reset:
             return float("nan")
-        return f"{folder}|{extension}|{mode}|{index}|{sort_by}|{order_by}|{loop}"
+        auto_queue_all = kwargs.get("auto_queue_all", False)
+        return f"{folder}|{extension}|{mode}|{index}|{sort_by}|{order_by}|{loop}|{auto_queue_all}"
 
-    def run(self, folder, extension, mode, index, sort_by, order_by, loop, reset, unique_id=None):
+    def run(self, folder, extension, mode, index, sort_by, order_by, loop, reset,
+            auto_queue_all=True, unique_id=None, prompt=None, extra_pnginfo=None):
         files = meta_util.list_folder_images(folder, extension, sort_by, order_by)
         total = len(files)
         if total == 0:
@@ -82,8 +163,6 @@ class DARASK_FolderImageLoader:
 
         # Auto-reset when the listing changed under us — different folder,
         # extension filter, sort key, or even just a different file count.
-        # Without this the cursor from the previous folder would silently
-        # carry over and you'd see "starts from index 5" type bugs.
         signature = f"{folder}|{extension}|{sort_by}|{order_by}|{total}"
         if state.get("signature") != signature:
             state["cursor"] = 0
@@ -104,9 +183,8 @@ class DARASK_FolderImageLoader:
             raw = meta_util.get_raw_metadata(info)
             parsed = meta_util.parse_a1111(raw)
             progress = f"1-{total}/{total} (batch)"
-            ui_payload = {"text": [progress]}
             return {
-                "ui": ui_payload,
+                "ui": {"text": [progress]},
                 "result": (
                     batch, mask_batch,
                     int(batch.shape[2]), int(batch.shape[1]),
@@ -130,23 +208,11 @@ class DARASK_FolderImageLoader:
             suffix = " (done)" if done else ""
 
         if done:
-            # End of folder reached with loop=False. Block downstream once
-            # so this queue doesn't re-save the same last image, and then
-            # auto-reset the cursor to 0 so the NEXT queue starts over from
-            # the beginning. That way both Auto Queue (instant) and regular
-            # manual Queue Prompt clicks work intuitively:
-            #
-            # * Auto Queue: one blocked queue lands between passes — the
-            #   green "(done)" pill on the node is your cue to stop the
-            #   auto-queue if you only wanted one pass.
-            # * Manual Queue Prompt: pressing Queue past the end skips one
-            #   image cleanly (no duplicate save, no error) and the next
-            #   press resumes from image 0 — no need to toggle `reset`.
+            # End of folder reached with loop=False. Silently block the
+            # downstream nodes (no error toast — ExecutionBlocker(None))
+            # and reset the cursor so the next queue press starts over.
             progress = f"{total}/{total} (done)"
-            blocker = ExecutionBlocker(
-                f"DARASK Folder Image Loader: folder fully processed "
-                f"({total}/{total}). Cursor reset — next queue starts at 1/{total}."
-            )
+            blocker = ExecutionBlocker(None)
             state["cursor"] = 0
             return {
                 "ui": {"text": [progress]},
@@ -164,10 +230,21 @@ class DARASK_FolderImageLoader:
                 next_cur = 0
             state["cursor"] = next_cur
 
+            # Self-enqueue another run if there's more work to do.
+            # * loop=True: keep going only while we advance (next_cur > cur).
+            #   Once we'd wrap (next_cur < cur), stop — that's one full pass.
+            # * loop=False: keep going while next_cur < total.
+            if auto_queue_all:
+                if loop:
+                    more = next_cur > cur
+                else:
+                    more = next_cur < total
+                if more:
+                    _enqueue_self(prompt, extra_pnginfo)
+
         progress = f"{cur + 1}/{total}{suffix}"
-        ui_payload = {"text": [progress]}
         return {
-            "ui": ui_payload,
+            "ui": {"text": [progress]},
             "result": (
                 image, mask,
                 int(image.shape[2]), int(image.shape[1]),
@@ -176,5 +253,3 @@ class DARASK_FolderImageLoader:
                 cur, total, progress,
             ),
         }
-
-
