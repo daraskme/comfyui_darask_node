@@ -1,0 +1,651 @@
+{
+  "id": "f7a250a1-53fb-496b-8c39-c60d9e764028",
+  "revision": 0,
+  "last_node_id": 68,
+  "last_link_id": 150,
+  "nodes": [
+    {
+      "id": 8,
+      "type": "VAEDecode",
+      "pos": [
+        957.7162871683087,
+        -441.4617366785429
+      ],
+      "size": [
+        210,
+        46
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 10
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 11
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": [
+            87
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode",
+        "cnr_id": "comfy-core",
+        "ver": "0.3.40"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 15,
+      "type": "VAELoader",
+      "pos": [
+        971.79171860275,
+        -314.9983666060018
+      ],
+      "size": [
+        324.0755652333623,
+        104.58500000000001
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            11
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoader",
+        "cnr_id": "comfy-core",
+        "ver": "0.3.40"
+      },
+      "widgets_values": [
+        "qwen_image_vae.safetensors"
+      ]
+    },
+    {
+      "id": 47,
+      "type": "SaveImage",
+      "pos": [
+        1332.2224610031224,
+        -439.729966152109
+      ],
+      "size": [
+        610.2856562499998,
+        821.0340000000001
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 87
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "comfyui_moto"
+      ]
+    },
+    {
+      "id": 44,
+      "type": "UNETLoader",
+      "pos": [
+        -899.16204521412,
+        -438.2242692743507
+      ],
+      "size": [
+        364.9882798858509,
+        93.4307577571305
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            150
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UNETLoader",
+        "cnr_id": "comfy-core",
+        "ver": "0.11.0"
+      },
+      "widgets_values": [
+        "hakushiMixAnima_v02.safetensors",
+        "default"
+      ]
+    },
+    {
+      "id": 45,
+      "type": "CLIPLoader",
+      "pos": [
+        -901.9720603448733,
+        -291.75059686494797
+      ],
+      "size": [
+        359.33230429991335,
+        106
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            144
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPLoader",
+        "cnr_id": "comfy-core",
+        "ver": "0.11.0"
+      },
+      "widgets_values": [
+        "qwen_3_06b_base.safetensors",
+        "stable_diffusion",
+        "default"
+      ]
+    },
+    {
+      "id": 12,
+      "type": "CLIPTextEncode",
+      "pos": [
+        -64.78692956755167,
+        29.749358641088552
+      ],
+      "size": [
+        703.1059548949626,
+        223.05607979921172
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 149
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            40
+          ]
+        }
+      ],
+      "title": "CLIP Text Encode (Negative Prompt)",
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode",
+        "cnr_id": "comfy-core",
+        "ver": "0.3.65"
+      },
+      "widgets_values": [
+        "worst quality, low quality, score_1, score_2, score_3, blurry, jpeg artifacts, sepia,\nbad quality,worst quality,worst detail,sketch,censor,censored,watermark,\n\nmultiple views, 2girls, 3girls, multiple girls, 2boys, multiple boys, 2 heads, multiple heads,\nnormal quality, lowres, 3d, realistic, photorealistic, watermark, bad anatomy, bad hands, deformed hands, \nextra arms, extra fingers, mutated hands, missing fingers, malformed limbs, fused fingers, too many fingers,"
+      ]
+    },
+    {
+      "id": 63,
+      "type": "CLIPTextEncode",
+      "pos": [
+        -71.22073881996377,
+        -432.3799851110962
+      ],
+      "size": [
+        683.3879396379907,
+        409.18608357679
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 148
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            135
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        "1girl, fujita_kotone, blonde hair, braid, twin braids, hair ribbon, long hair,nude,naked,nipples,pussy,\nfaceless male, short black hair, muscular male\n\n\nclrmnga, comic, color, single page layout, bedroom setting, 1girl, fujita_kotone, blonde hair, braid, twin braids, hair ribbon, long hair, nude, large breasts, cross-section view, visible penetration, extremely detailed fluids, ahegao, sweat, heavy blush, multiple panels, speech bubble, motion lines, emphasis lines, heart, open mouth\n\nPage layout:\n\nTop row: one panel (The moment of ejaculation)\nMiddle large panel: Cross-section view showing the semen filling her womb (fertilization focus)\nBottom row: one panel (Kotone lying exhausted but happy, covered in fluids)\nJapanese text examples:\n「んぎぃっ！！♡ 中に…いっぱい出てるぅ…っ！」\n「これで私は、ずっとプロデューサーさんのものです…♡」\n\nprofessional erotic manga style, vibrant colors, detailed facial expressions, extremely detailed fluids, ahegao, cross-section view, maximum lewdness, hearts everywhere, high quality, clean lines"
+      ]
+    },
+    {
+      "id": 19,
+      "type": "KSampler",
+      "pos": [
+        662.1001891318588,
+        -448.6679790240249
+      ],
+      "size": [
+        261.9563110351562,
+        474
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 142
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 135
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 40
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 90
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "slot_index": 0,
+          "links": [
+            10
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSampler",
+        "cnr_id": "comfy-core",
+        "ver": "0.3.40"
+      },
+      "widgets_values": [
+        874360172357074,
+        "randomize",
+        30,
+        4.5,
+        "res_multistep",
+        "sgm_uniform",
+        1
+      ]
+    },
+    {
+      "id": 51,
+      "type": "DARASK Empty Latent Preset",
+      "pos": [
+        -904.2801683394443,
+        -119.58288899327815
+      ],
+      "size": [
+        350.33431800757313,
+        157.95195273403579
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "links": [
+            90
+          ]
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "DARASK Empty Latent Preset"
+      },
+      "widgets_values": [
+        "832 × 1216  (13:19 ≈ 2:3 portrait)",
+        1,
+        false
+      ]
+    },
+    {
+      "id": 67,
+      "type": "DARASK Anima Sampling Tuner",
+      "pos": [
+        291.73014383372237,
+        -903.0667541027025
+      ],
+      "size": [
+        308.80625,
+        414
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 141
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            142
+          ]
+        },
+        {
+          "name": "info",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "DARASK Anima Sampling Tuner"
+      },
+      "widgets_values": [
+        true,
+        "SD3 / Anima / Wan (flow)",
+        3,
+        false,
+        1,
+        1,
+        false,
+        1,
+        "off",
+        0.7,
+        1.15,
+        0.5,
+        1024,
+        1024,
+        1000
+      ]
+    },
+    {
+      "id": 66,
+      "type": "DARASK Anima Step Cache",
+      "pos": [
+        -94.24008317444564,
+        -847.093661416225
+      ],
+      "size": [
+        360.444921875,
+        246
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 147
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            141
+          ]
+        },
+        {
+          "name": "info",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "DARASK Anima Step Cache"
+      },
+      "widgets_values": [
+        30,
+        0.25,
+        6,
+        0.5,
+        2,
+        0,
+        6,
+        0.9
+      ]
+    },
+    {
+      "id": 68,
+      "type": "DARASK Lora Loader",
+      "pos": [
+        -523.3318257006432,
+        -672.2386953944774
+      ],
+      "size": [
+        376,
+        246
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "shape": 7,
+          "type": "MODEL",
+          "link": 150
+        },
+        {
+          "name": "clip",
+          "shape": 7,
+          "type": "CLIP",
+          "link": 144
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            147
+          ]
+        },
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            148,
+            149
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "DARASK Lora Loader"
+      },
+      "widgets_values": [
+        true,
+        "anima-highres-aesthetic-boost.safetensors",
+        1,
+        true,
+        "manga\\clrmnga11.safetensors",
+        1,
+        null,
+        null
+      ]
+    }
+  ],
+  "links": [
+    [
+      10,
+      19,
+      0,
+      8,
+      0,
+      "LATENT"
+    ],
+    [
+      11,
+      15,
+      0,
+      8,
+      1,
+      "VAE"
+    ],
+    [
+      40,
+      12,
+      0,
+      19,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      87,
+      8,
+      0,
+      47,
+      0,
+      "IMAGE"
+    ],
+    [
+      90,
+      51,
+      0,
+      19,
+      3,
+      "LATENT"
+    ],
+    [
+      135,
+      63,
+      0,
+      19,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      141,
+      66,
+      0,
+      67,
+      0,
+      "MODEL"
+    ],
+    [
+      142,
+      67,
+      0,
+      19,
+      0,
+      "MODEL"
+    ],
+    [
+      144,
+      45,
+      0,
+      68,
+      1,
+      "CLIP"
+    ],
+    [
+      147,
+      68,
+      0,
+      66,
+      0,
+      "MODEL"
+    ],
+    [
+      148,
+      68,
+      1,
+      63,
+      0,
+      "CLIP"
+    ],
+    [
+      149,
+      68,
+      1,
+      12,
+      0,
+      "CLIP"
+    ],
+    [
+      150,
+      44,
+      0,
+      68,
+      0,
+      "MODEL"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.740024994425819,
+      "offset": [
+        1073.7150947161833,
+        967.3642000589699
+      ]
+    },
+    "workflowRendererVersion": "LG",
+    "frontendVersion": "1.43.18",
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
+  },
+  "version": 0.4
+}

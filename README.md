@@ -874,6 +874,7 @@ Auto Queue 無しで `Iterate` を押した場合は1枚しか生成されませ
 
 | ファイル | 内容 |
 |---|---|
+| `anima_simple.json` | Anima(`hakushiMixAnima_v02.safetensors` + Qwen-3 0.6B CLIP + Qwen VAE)で 832×1216 ポートレートを生成するミニマルな i2v 用ベース。`DARASK Lora Loader` で複数 LoRA をスタック、`DARASK Anima Step Cache` で 30 ステップを Chebyshev キャッシュで加速、`DARASK Anima Sampling Tuner` で shift=3.0(Forge Anima 既定)を適用、`DARASK Empty Latent (Preset)` でアスペクト比選択 |
 | `hiresfix_folder_exif.json` | フォルダ内の画像を順に読み込み、EXIF から元のモデル/LoRA/プロンプト/サンプラー設定を復元して `easy hiresFix` でアップスケール → SaveImage。`DARASK Folder Image Loader` + `DARASK Exif Apply (Auto-detect)` を `easy pipeIn / hiresFix / preSampling / kSampler / pipeOut` と組み合わせた例。[comfyui-easy-use](https://github.com/yolain/ComfyUI-Easy-Use) が必要 |
 | `mmaudio_video_to_audio.json` | 動画ファイル → RIFE でフレーム補間(16→25fps)→ MMAudio で音声生成 → SaveAudio。`DARASK Load Video (Upload)` + `DARASK RIFE Interpolation` + `DARASK Video Info` の組み合わせ例。[ComfyUI-MMAudio](https://github.com/kijai/ComfyUI-MMAudio) が必要 |
 | `ltx23_video_to_video.json` | **サブグラフを使わないフラットなLTX 2.3 image-to-video パイプライン**。元のサブグラフ7個(Settings / Prompt / Low Res Gen / 2x Upscale / 4x Upscale / Decode / Models / I2V Image)をすべて展開し、各ステップのノードを直接編集可能に。ComfyMath の `CM_FloatToInt` は `DARASK Float → Int` に置き換え済み。`DARASK Lora Loader` で複数 LTX 2.3 LoRA をスタック。48ノード/74リンク。[ComfyUI-LTXVideo](https://github.com/Lightricks/ComfyUI-LTXVideo) が必要 |
