@@ -888,5 +888,110 @@ Auto Queue 無しで `Iterate` を押した場合は1枚しか生成されませ
 
 ---
 
+## Development Notes / 引き継ぎメモ
+
+このセクションは、ノード群を開発・保守する上で **コードや git log から推測しづらい背景知識** をまとめたものです。将来のセッションで同じ問題を二度踏まないためのチェックリストとして利用してください。
+
+### Architecture-specific sampling multiplier(超重要)
+
+`ModelSamplingDiscreteFlow.set_parameters(shift, multiplier)` の `multiplier` は **モデルアーキテクチャごとに違う値** が `comfy/supported_models.py` で定義されています。間違った値を入れると σ が桁違いに圧縮/拡大されて **砂嵐 / モザイク** が出ます。
+
+| Architecture | `multiplier` | 出典 |
+|---|---|---|
+| **Anima** | **1.0** | `comfy/supported_models.py` の `class Anima.sampling_settings` |
+| **Wan 2.x** | **1.0** | 同上 (`Wan21`) |
+| **LTX-Video** | **1.0** | 同上 |
+| **SD3** | **1000** | 同上 (`class SD3`) |
+| Flux | 1.0(`set_parameters` 引数なし) | `ModelSamplingFlux` |
+
+→ `model_sampling.py:_resolve_multiplier()` は `explicit > 0` ならそれを、`0` なら `m.model.model_sampling.multiplier` から自動検出します。`shift_multiplier` ウィジェットのデフォルトは **`0.0`(自動)**。SD3 専用に使う時だけ `1000` を手で入れる。
+
+過去のバグ: `shift_multiplier` のデフォルトを `1000`(SD3 値)にしていた時期があり、Anima を繋ぐと sigma が 1/1000 になって砂嵐が出ました。**絶対に 0(自動)から変えない**。
+
+### Forge Classic Neo SHIFT preset table(参考)
+
+`modules_forge/presets.py` の `SHIFT` 辞書より。Forge Classic Neo の Anima Shift スライダーは内部で `ModelSamplingDiscreteFlow.set_parameters(shift=...)` を呼んでいるだけなので、ComfyUI 側でも同じ値が使えます。
+
+| Architecture | Forge デフォルト |
+|---|---|
+| Anima | **3.0** ← `DARASK Anima Sampling Tuner` のデフォルト |
+| Ernie-Image | 3.0 |
+| Wan 2.2 | 5.0 |
+| Lumina-Image-2.0 | 6.0 |
+| Z-Image-Turbo | 9.0 |
+| SDXL | -9.0(負値で「逆shift」) |
+| AuraFlow | ~1.73 |
+
+### バグ史(同じ事を二度やらないために)
+
+| 症状 | 真因 | 修正 |
+|---|---|---|
+| **砂嵐/モザイク** が出力に出る | `_patch_shift_sd3` の `multiplier` デフォルトが SD3 値の 1000 だった。Anima native は 1.0 なので σ が 1/1000 に圧縮 | `_resolve_multiplier()` で model から自動検出。widget デフォルト `0` |
+| 似た砂嵐(別件) | Step Cache の `_ChebyshevForecaster.push` が `h.view(-1)` で **view** を保持していた。サンプラーが内部で in-place 操作するとキャッシュが silently 壊れる | `h.detach().clone().reshape(-1)` に変更 |
+| Step Cache が under-determined poly fit でモザイク | バッファ点数 < `degree+1` の状態で ridge regression を呼んでいた | `len(H_buf) < degree+1` なら Taylor フォールバック + 起動時に warmup_steps チェックの警告 |
+| `AttributeError: 'NoneType' object has no attribute 'clone'` (Step Cache / Sampling Tuner) | `DARASK Lora Loader` は `model=None` を **黙って** pass-through する仕様。ワークフローで UNETLoader→Lora Loader.model が未配線だと None が下流に流れる | Lora Loader 側で `clip` だけ繋がっている時は warning print、Step Cache / Sampling Tuner 側でも明示的 `ValueError` を投げる |
+| Folder Image Loader のカーソルが workflow 編集で巻き戻る | Python の `id(self)` を state キーに使っていたが、ノード再構築で id が変わる | hidden input `unique_id`(LiteGraph ノードID)を state キーに |
+| `ExecutionBlocker` で赤いエラートーストが毎回出る | `ExecutionBlocker("msg")` は文字列を渡すとトーストが出る仕様 | `ExecutionBlocker(None)` でサイレント遮断 |
+
+### Implementation patterns(再利用パターン)
+
+1. **動的入力(`+ Add` ボタン等)** — `_FlexibleOptionalInputs` (dict サブクラス) を `INPUT_TYPES.optional` に渡し、`__contains__` を常に True、未宣言キーには `(_ANY,)` を返す。JS 側が `lora_N` 等の任意キーを serialise すれば Python 側でそのまま受け取れる。`lora_loader.py:_FlexibleOptionalInputs` 参照。
+
+2. **`set_model_sampler_cfg_function` は単一スロット** — RescaleCFG と CFGZeroStar が両方とも `sampler_cfg_function` に書き込むため **排他**。Sampling Tuner では radio で1つだけ選べる UI に。一方 `set_model_sampler_post_cfg_function` は **スタック可能**(リスト)、`set_model_unet_function_wrapper` も **単一スロット**。
+
+3. **状態の永続化** — workflow に紐付ける state は hidden input の `unique_id`(LiteGraph ノードID)をキーにすること。`id(self)`(Python オブジェクトID)は ComfyUI が頻繁に再生成するので NG。
+
+4. **size の保存** — JS で `addWidget` / `addInput` するとノードが伸びる。`preserveSize()` ヘルパで snapshot→操作→restore する(`web/darask_ltx23.js` 参照)。
+
+5. **V3 API** — `io.ComfyNode` 子クラスは `_exec` クラスメソッドを `args` で受けて中で unpack、`io.NodeOutput(...)` を返す。レガシー V1 と異なり戻り値は tuple ではなく `NodeOutput`。
+
+6. **自前で再キュー** — `PromptServer.instance.prompt_queue.put((number, prompt_id, prompt, extra_data, outputs_to_execute, sensitive))` の **6-tuple** 形式。`outputs_to_execute` は `OUTPUT_NODE=True` なノードの ID リスト。`folder_loader.py:_enqueue_self()` 参照。
+
+7. **ExecutionBlocker** — `comfy_execution.graph.ExecutionBlocker` を **OUTPUT のどれか1つ** に流せば、それを受け取る下流ノードすべてがスキップされる。`None` 引数で silent、文字列引数で赤トースト。
+
+### モデルファイル配置(典型構成)
+
+| 用途 | パス | 例 |
+|---|---|---|
+| UNet(diffusion model) | `models/diffusion_models/` | `hakushiMixAnima_v02.safetensors` |
+| Text encoder | `models/text_encoders/` | `qwen_3_06b_base.safetensors` |
+| VAE | `models/vae/` | `qwen_image_vae.safetensors` |
+| RIFE モデル | `models/rife/` | `flownet.pkl`(hzwer/RIFE の RIFEv4.26_0921.zip) |
+| Checkpoints(SDXL/SD1.5/Pony 等) | `models/checkpoints/` | `<arch>.safetensors` |
+| LoRAs | `models/loras/` | サブフォルダOK、fuzzy match で解決 |
+| GGUF | `models/diffusion_models/` または `models/unet/` | ComfyUI-GGUF 必須 |
+
+### Anima_simple ワークフローの注意
+
+- `anima_simple.json` は **UNETLoader → DARASK Lora Loader** に `model` リンクが必要(link 150)。これが無いと Lora Loader が None pass-through し、下流の Step Cache / Sampling Tuner で `AttributeError` または無限の "model is not connected" エラー。
+- 古い保存版を読み込んだ時は、ノード上で UNETLoader の `MODEL` 出力から Lora Loader の `model` 入力に手動で線を引き直すこと。
+- スタック順: `UNETLoader → DARASK Lora Loader → DARASK Anima Step Cache → DARASK Anima Sampling Tuner → KSampler`(Step Cache は `unet_function_wrapper`、Sampling Tuner は CFG hook + `model_sampling` なので順序は逆でも動くが、慣例的にこの順)。
+
+### JS extension パターン
+
+- **ライブプレビュー badge**(LTX23 Generator / Video Settings の右上ピル)— `onDrawForeground(ctx)` でノードのウィジェット値を読んで CanvasRenderingContext2D で描画。`node.setDirtyCanvas(true)` を widget callback で呼んで再描画トリガ。
+- **動的 add/remove** — `addWidget(type, name, value, callback, options)` / `removeWidget(idx)` を `node.widgets` 配列に対して呼ぶ。`node.serialize_widgets = true` で値が workflow JSON に保存される。
+- **`onConfigure`** で workflow ロード時に widgets を再構築(`+ Add LoRA` で追加された行は Python 側に存在しないので、JS が前回の数だけ widget を再生成する必要がある)。
+- **`onNodeCreated`** は新規ノード配置時、`onConfigure` は workflow ロード時に呼ばれる。両方で widget 初期化ロジックを共有する。
+
+### Auto Queue 関連の挙動メモ
+
+- ComfyUI の Queue panel → "Extra options" → **Auto Queue: `instant`** が一番強力。1キュー終了で即次キュー。`change` は workflow が変わった時だけ。
+- `DARASK Folder Image Loader.auto_queue_all = True`(デフォルト)を有効にすると、ノードが自前で再キューするので Auto Queue が OFF でも1パス完走する。両方有効にすると **二重 enqueue** されて無駄なので、片方だけ使う。
+
+### トラブルシューティング クイックリファレンス
+
+| 症状 | まず確認すること |
+|---|---|
+| 砂嵐/モザイク | `DARASK Anima Sampling Tuner.shift_multiplier = 0`(自動)か |
+| `AttributeError: 'NoneType' object has no attribute 'clone'` | `UNETLoader → DARASK Lora Loader.model` の線が繋がっているか |
+| Iterate モードで1枚しか出ない | Auto Queue (instant) が ON か |
+| Folder Image Loader が同じ画像を返し続ける | `mode = Auto Advance` か(Manual Index になっていないか)/ folder パスを変えた直後ならカーソル自動リセット済 |
+| Step Cache で品質劣化が酷い | `warmup_steps >= polynomial_degree + 1` を満たすか / `prediction_weight = 0` で Taylor only に切替えて検証 |
+| LTX 2.3 で `CM_FloatToInt` 不要 | `DARASK LTX 2.3 Video Settings` の `fps_int` 出力を使う |
+| rgthree workflow から LoRA が復元されない | `DARASK Exif Apply` の Anima / SDXL バリアントを試す(Auto-detect が判定ミスする場合あり) |
+
+---
+
 ## ライセンス
 MIT(ただし `rife_internal/` 配下は派生元の MIT を継承)
