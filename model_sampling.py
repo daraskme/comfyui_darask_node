@@ -175,28 +175,47 @@ class DARASK_AnimaSamplingTuner:
                 "model": ("MODEL",),
 
                 # ─── Shift ─────────────────────────────
+                # Defaults match Forge Classic Neo presets (modules_forge/presets.py):
+                #   anima=3.0, wan=5.0, lumina=6.0, z-image-turbo=9.0, ernie=3.0.
+                # The node is named "Anima Tuner" → ship with the Anima default.
                 "shift_enable": ("BOOLEAN", {"default": True, "tooltip": "Apply ModelSamplingDiscreteFlow shift (the Anima/Wan/Forge 'Shift' slider)."}),
                 "shift_style": ([_STYLE_SD3, _STYLE_AURA, _STYLE_FLUX], {"default": _STYLE_SD3}),
                 "shift": ("FLOAT", {
-                    "default": 5.0, "min": 0.0, "max": 100.0, "step": 0.01,
-                    "tooltip": "SD3/Anima/Wan: 3-8 typical (default 5).  AuraFlow: ~1.73.  Flux: ignored, use max/base instead.",
+                    "default": 3.0, "min": 1.0, "max": 24.0, "step": 0.5,
+                    "tooltip": (
+                        "Forge Classic Neo preset values:\n"
+                        "  Anima: 3.0 (default), Wan 2.2: 5.0, Lumina: 6.0, Z-Image-Turbo: 9.0,\n"
+                        "  Ernie: 3.0.  AuraFlow: ~1.73.  Flux: ignored, use max/base instead."
+                    ),
                 }),
 
                 # ─── Temporal Score Rescaling ───────────
+                # Not in Forge — these are ComfyUI's defaults from
+                # comfy_extras/nodes_eps.py.
                 "tsr_enable": ("BOOLEAN", {"default": False, "tooltip": "Video-model-specific noise rescaling (good for Anima/Wan motion coherence)."}),
                 "tsr_k": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01}),
                 "tsr_sigma": ("FLOAT", {"default": 1.0, "min": 0.001, "max": 100.0, "step": 0.01, "tooltip": "Sigma pivot — rescaling kicks in for sigma above this."}),
 
                 # ─── Epsilon Scaling ─────────────────────
+                # Defaults from Forge Classic Neo (modules/shared_options.py):
+                #   default 1.0 (disabled), range 1.0–1.05, step 0.005.
                 "eps_enable": ("BOOLEAN", {"default": False, "tooltip": "Exposure-bias mitigation (post-CFG noise rescale)."}),
-                "eps_scaling": ("FLOAT", {"default": 1.005, "min": 0.5, "max": 2.0, "step": 0.001, "tooltip": "Typical: 1.005 - 1.020. 1.0 = no-op."}),
+                "eps_scaling": ("FLOAT", {
+                    "default": 1.0, "min": 1.0, "max": 1.05, "step": 0.005,
+                    "tooltip": "Forge Classic Neo: 1.0 (disabled) - 1.05, step 0.005. 1.0 = no-op.",
+                }),
 
                 # ─── CFG mode (mutually exclusive) ───────
+                # Forge Classic Neo defaults (processing_scripts/rescale_cfg.py):
+                #   slider range 0.0–1.0, step 0.05, default 0.0 (disabled).
+                # The mode selector here doubles as the on/off — when set to
+                # "Rescale CFG", a multiplier of 0.7 (ComfyUI's stock default)
+                # is a sensible starting point. 0.0 mimics Forge's "off".
                 "cfg_mode": (["off", "Rescale CFG", "CFG Zero Star"], {
                     "default": "off",
                     "tooltip": "Only one CFG variant can be applied at a time (they both replace `sampler_cfg_function`).",
                 }),
-                "rescale_cfg_multiplier": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "rescale_cfg_multiplier": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 1.0, "step": 0.05}),
             },
             "optional": {
                 # ─── Flux-style shift extras ──────────────
