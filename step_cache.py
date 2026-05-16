@@ -69,7 +69,10 @@ class _ChebyshevForecaster:
             self.reset()
         self.shape = h.shape
         self.dtype = h.dtype
-        self.H_buf.append(h.view(-1))
+        # Detach + clone — without this the buffer holds a *view* of the
+        # model output, and any later in-place op on that tensor (some
+        # samplers reuse buffers) corrupts our cached prediction silently.
+        self.H_buf.append(h.detach().clone().reshape(-1))
         self.T_buf.append(self._tau(step))
         self.time_buf.append(step)
         if len(self.H_buf) > self.K:
@@ -79,6 +82,26 @@ class _ChebyshevForecaster:
 
     def predict(self, step: int, blend: float) -> torch.Tensor:
         device = self.H_buf[-1].device
+
+        # Taylor anchor first (always cheap and stable).
+        if len(self.H_buf) >= 2:
+            h_i = self.H_buf[-1].to(torch.float32)
+            h_prev = self.H_buf[-2].to(torch.float32)
+            dt = self.time_buf[-1] - self.time_buf[-2]
+            k = (step - self.time_buf[-1]) / dt if abs(dt) > 1e-8 else 1.0
+            taylor = h_i + k * (h_i - h_prev)
+        else:
+            taylor = self.H_buf[-1].to(torch.float32)
+
+        # If the Chebyshev fit would be under-determined (fewer buffer
+        # points than degree+1) the ridge-regularised solve produces
+        # wildly-biased extrapolations (visible as mosaic / blocky
+        # artefacts on the decoded image). Skip the poly term entirely
+        # in that regime and fall back to pure Taylor — same as if the
+        # user had set prediction_weight=0.
+        if blend <= 0.0 or len(self.H_buf) < self.degree + 1:
+            return taylor.to(self.dtype).view(self.shape)
+
         H = torch.stack(self.H_buf, dim=0).to(torch.float32)
         T = torch.tensor(self.T_buf, dtype=torch.float32, device=device)
 
@@ -94,16 +117,6 @@ class _ChebyshevForecaster:
 
         tau_star = torch.tensor([self._tau(step)], device=device)
         cheb_pred = (self._design(tau_star) @ coef).squeeze(0)
-
-        # Taylor anchor (linear extrapolation from last two points).
-        if len(self.H_buf) >= 2:
-            h_i = self.H_buf[-1].to(torch.float32)
-            h_prev = self.H_buf[-2].to(torch.float32)
-            dt = self.time_buf[-1] - self.time_buf[-2]
-            k = (step - self.time_buf[-1]) / dt if abs(dt) > 1e-8 else 1.0
-            taylor = h_i + k * (h_i - h_prev)
-        else:
-            taylor = self.H_buf[-1].to(torch.float32)
 
         out = (1.0 - blend) * taylor + blend * cheb_pred
         return out.to(self.dtype).view(self.shape)
@@ -137,8 +150,13 @@ class DARASK_AnimaStepCache:
                     "tooltip": "Total sampler steps — used only to schedule warmup/stop cutoffs proportionally.",
                 }),
                 "prediction_weight": ("FLOAT", {
-                    "default": 0.25, "min": 0.0, "max": 1.0, "step": 0.05,
-                    "tooltip": "0 = Taylor (linear) only, 1 = pure polynomial. 0.25 is a safe default.",
+                    "default": 0.0, "min": 0.0, "max": 1.0, "step": 0.05,
+                    "tooltip": (
+                        "0 = pure Taylor (safest, recommended for Anima / Wan / "
+                        "res_multistep). 0.25 = blend in 25% Chebyshev poly. "
+                        "1 = pure polynomial. Higher = more prone to mosaic "
+                        "artefacts when warmup_steps < polynomial_degree+1."
+                    ),
                 }),
                 "polynomial_degree": ("INT", {
                     "default": 6, "min": 1, "max": 8, "step": 1,
@@ -179,6 +197,14 @@ class DARASK_AnimaStepCache:
                 "its OWN `model` input is unconnected — if you go through "
                 "Lora Loader, make sure UNETLoader → Lora Loader.model is "
                 "wired as well."
+            )
+        if prediction_weight > 0 and warmup_steps < polynomial_degree + 1:
+            print(
+                f"DARASK Anima Step Cache: warmup_steps={warmup_steps} is less "
+                f"than polynomial_degree+1 ({polynomial_degree + 1}). The first "
+                "cached step will fall back to Taylor-only extrapolation to "
+                "avoid mosaic artefacts. Raise warmup_steps or lower "
+                "polynomial_degree to silence this."
             )
         state = {
             "forecaster": None,
