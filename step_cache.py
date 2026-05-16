@@ -150,12 +150,11 @@ class DARASK_AnimaStepCache:
                     "tooltip": "Total sampler steps — used only to schedule warmup/stop cutoffs proportionally.",
                 }),
                 "prediction_weight": ("FLOAT", {
-                    "default": 0.0, "min": 0.0, "max": 1.0, "step": 0.05,
+                    "default": 0.25, "min": 0.0, "max": 1.0, "step": 0.05,
                     "tooltip": (
-                        "0 = pure Taylor (safest, recommended for Anima / Wan / "
-                        "res_multistep). 0.25 = blend in 25% Chebyshev poly. "
-                        "1 = pure polynomial. Higher = more prone to mosaic "
-                        "artefacts when warmup_steps < polynomial_degree+1."
+                        "0 = pure Taylor (linear) extrapolation. "
+                        "0.25 = blend 25% Chebyshev polynomial (Forge "
+                        "Spectrum default). 1 = pure polynomial."
                     ),
                 }),
                 "polynomial_degree": ("INT", {
