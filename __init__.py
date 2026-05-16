@@ -9,6 +9,8 @@ from .exif_apply import (
 from .latent_preset import DARASK_EmptyLatentPreset
 from .lora_loader import DARASK_LoraLoader
 from .ltx23 import DARASK_LTX23VideoSettings, DARASK_FloatToInt
+from .model_sampling import DARASK_AnimaSamplingTuner
+from .step_cache import DARASK_AnimaStepCache
 
 try:
     from .ltx23_generator import DARASK_LTX23Generator
@@ -33,6 +35,8 @@ NODE_CLASS_MAPPINGS = {
     "DARASK Lora Loader": DARASK_LoraLoader,
     "DARASK LTX23 Video Settings": DARASK_LTX23VideoSettings,
     "DARASK Float to Int": DARASK_FloatToInt,
+    "DARASK Anima Sampling Tuner": DARASK_AnimaSamplingTuner,
+    "DARASK Anima Step Cache": DARASK_AnimaStepCache,
     **({"DARASK LTX 2.3 Generator": DARASK_LTX23Generator} if _HAS_LTX23_GEN else {}),
     "DARASK Prompt Cell": DARASK_PromptCell,
     "DARASK Prompt Cell Output": DARASK_PromptCellOutput,
@@ -51,6 +55,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "DARASK Lora Loader": "DARASK Lora Loader",
     "DARASK LTX23 Video Settings": "DARASK LTX 2.3 Video Settings",
     "DARASK Float to Int": "DARASK Float → Int",
+    "DARASK Anima Sampling Tuner": "DARASK Anima Sampling Tuner",
+    "DARASK Anima Step Cache": "DARASK Anima Step Cache (Spectrum)",
     **({"DARASK LTX 2.3 Generator": "DARASK LTX 2.3 Generator (All-in-One)"} if _HAS_LTX23_GEN else {}),
     "DARASK Prompt Cell": "DARASK Prompt Cell",
     "DARASK Prompt Cell Output": "DARASK Prompt Cell Output (CLIP Encode)",
