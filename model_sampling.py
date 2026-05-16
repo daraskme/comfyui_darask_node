@@ -37,7 +37,41 @@ _STYLE_AURA = "AuraFlow"
 _STYLE_FLUX = "Flux (resolution-aware)"
 
 
-def _patch_shift_sd3(m, shift: float, multiplier: float = 1000.0):
+def _resolve_multiplier(m, explicit) -> float:
+    """
+    Pick the correct flow-multiplier:
+      * SD3 / Flux → 1000 (the stock ComfyUI default for ModelSamplingSD3)
+      * Anima / Wan / Wan-AV → 1.0 (per comfy/supported_models.py)
+      * LTX-V → 1.0
+    `explicit > 0` overrides; otherwise we inherit whatever the model's
+    current `model_sampling.multiplier` is (which ComfyUI sets up from
+    the model's `sampling_settings` at load time).
+    """
+    if explicit is not None and float(explicit) > 0:
+        return float(explicit)
+    try:
+        current = getattr(m.model, "model_sampling", None)
+        if current is not None:
+            mult = getattr(current, "multiplier", None)
+            if mult is not None:
+                return float(mult)
+    except Exception:
+        pass
+    return 1.0  # safe default for Anima / Wan / LTX flow models
+
+
+def _patch_shift_sd3(m, shift: float, multiplier=None):
+    """
+    ModelSamplingSD3-style shift patch.
+
+    `multiplier=None` auto-inherits the source model's native multiplier
+    (Anima/Wan → 1.0, SD3 → 1000). Earlier versions hard-coded 1000,
+    which collapsed Anima's sigma schedule by 1000× and produced
+    mosaic/sandstorm output. See comfy/supported_models.py — Anima's
+    `sampling_settings = {"multiplier": 1.0, "shift": 3.0}`.
+    """
+    mult = _resolve_multiplier(m, multiplier)
+
     sampling_base = comfy.model_sampling.ModelSamplingDiscreteFlow
     sampling_type = comfy.model_sampling.CONST
 
@@ -45,8 +79,9 @@ def _patch_shift_sd3(m, shift: float, multiplier: float = 1000.0):
         pass
 
     ms = ModelSamplingAdvanced(m.model.model_config)
-    ms.set_parameters(shift=float(shift), multiplier=float(multiplier))
+    ms.set_parameters(shift=float(shift), multiplier=mult)
     m.add_object_patch("model_sampling", ms)
+    return mult
 
 
 def _patch_shift_flux(m, max_shift: float, base_shift: float, width: int, height: int):
@@ -223,8 +258,18 @@ class DARASK_AnimaSamplingTuner:
                 "flux_base_shift": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 100.0, "step": 0.01}),
                 "flux_width": ("INT", {"default": 1024, "min": 16, "max": 8192, "step": 8}),
                 "flux_height": ("INT", {"default": 1024, "min": 16, "max": 8192, "step": 8}),
-                # ─── SD3 multiplier (rarely changed) ─────
-                "shift_multiplier": ("FLOAT", {"default": 1000.0, "min": 0.0, "max": 100000.0, "step": 1.0}),
+                # ─── SD3 multiplier (advanced override) ─────
+                # 0 = auto-detect from the source model. Manual override
+                # only if you know exactly which sigma schedule you want.
+                # Anima/Wan native = 1.0, SD3 native = 1000.
+                "shift_multiplier": ("FLOAT", {
+                    "default": 0.0, "min": 0.0, "max": 100000.0, "step": 1.0,
+                    "tooltip": (
+                        "0 = auto-detect from source model "
+                        "(Anima/Wan/LTX → 1.0, SD3 → 1000). Override only "
+                        "if you specifically need a non-native multiplier."
+                    ),
+                }),
             },
         }
 
@@ -260,8 +305,11 @@ class DARASK_AnimaSamplingTuner:
                     f"[max={flux_max_shift:.3g}, base={flux_base_shift:.3g}, {flux_width}×{flux_height}]"
                 )
             else:
-                _patch_shift_sd3(m, shift, multiplier=shift_multiplier)
-                active.append(f"shift(SD3/Anima)={shift:.3g}")
+                # multiplier=0 → _resolve_multiplier auto-detects from
+                # the source model's native sampling_settings.
+                explicit = float(shift_multiplier) if shift_multiplier and shift_multiplier > 0 else None
+                effective_mult = _patch_shift_sd3(m, shift, multiplier=explicit)
+                active.append(f"shift(SD3/Anima)={shift:.3g} (mult={effective_mult:g})")
 
         # 2. CFG mode (replaces cfg_function — must come BEFORE post_cfg hooks)
         if cfg_mode == "Rescale CFG":
