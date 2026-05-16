@@ -235,6 +235,16 @@ class DARASK_AnimaSamplingTuner:
             flux_max_shift=1.15, flux_base_shift=0.5,
             flux_width=1024, flux_height=1024,
             shift_multiplier=1000.0):
+        if model is None:
+            raise ValueError(
+                "DARASK Anima Sampling Tuner: `model` input is not connected. "
+                "Wire a model loader (UNETLoader, CheckpointLoaderSimple, "
+                "DARASK Lora Loader, etc.) to this node's `model` input. "
+                "Note: DARASK Lora Loader silently passes None through when "
+                "its OWN `model` input is unconnected — if you go through "
+                "Lora Loader, make sure UNETLoader → Lora Loader.model is "
+                "wired as well."
+            )
         m = model.clone()
         active: list[str] = []
 

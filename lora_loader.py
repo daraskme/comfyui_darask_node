@@ -201,6 +201,21 @@ class DARASK_LoraLoader:
     def run(self, model=None, clip=None, **kwargs):
         # Nothing to do if there's no model to stack onto — pass through.
         if model is None:
+            # `clip` connected but `model` not connected is almost always a
+            # mistake (the user forgot to wire UNETLoader/CheckpointLoader
+            # to this node's model input). Lora Loader still passes None
+            # through so CLIP-only LoRA chains work, but warn loudly so the
+            # downstream "'NoneType' has no attribute 'clone'" cascade is
+            # easier to debug.
+            if clip is not None:
+                print(
+                    "DARASK Lora Loader: `model` input is None but `clip` is "
+                    "connected — passing None through. If you intended to "
+                    "stack LoRA on a diffusion model, wire your model loader "
+                    "(UNETLoader / CheckpointLoaderSimple / etc.) to this "
+                    "node's `model` input. Otherwise downstream nodes that "
+                    "call `model.clone()` will fail with AttributeError."
+                )
             return (model, clip)
 
         loader = LoraLoader()

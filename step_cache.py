@@ -170,6 +170,16 @@ class DARASK_AnimaStepCache:
     def run(self, model, total_steps, prediction_weight, polynomial_degree,
             regularization, window_size, flex_window, warmup_steps,
             stop_caching_at):
+        if model is None:
+            raise ValueError(
+                "DARASK Anima Step Cache: `model` input is not connected. "
+                "Wire a model loader (UNETLoader, CheckpointLoaderSimple, "
+                "DARASK Lora Loader, etc.) to this node's `model` input. "
+                "Note: DARASK Lora Loader silently passes None through when "
+                "its OWN `model` input is unconnected — if you go through "
+                "Lora Loader, make sure UNETLoader → Lora Loader.model is "
+                "wired as well."
+            )
         state = {
             "forecaster": None,
             "step": 0,
