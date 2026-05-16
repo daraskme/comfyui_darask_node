@@ -279,7 +279,7 @@ class DARASK_AnimaSamplingTuner:
             cfg_mode, rescale_cfg_multiplier,
             flux_max_shift=1.15, flux_base_shift=0.5,
             flux_width=1024, flux_height=1024,
-            shift_multiplier=1000.0):
+            shift_multiplier=0.0):
         if model is None:
             raise ValueError(
                 "DARASK Anima Sampling Tuner: `model` input is not connected. "
