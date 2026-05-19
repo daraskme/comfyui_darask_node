@@ -79,10 +79,11 @@ D2 の `Folder Image Queue` + `Load Image` を1ノードに統合した置き換
 
 #### ループ・リセット・自動キュー
 
-* **`auto_queue_all`**(デフォルト **ON**)— **通常の Queue Prompt(即時ではない)1回押すだけでフォルダ全部処理** するモード。各画像生成後にノードが内部的に同じワークフローを自動で再キューします(`PromptServer.prompt_queue.put` を直接呼び出し)。
+* **`auto_queue_all`**(デフォルト **ON**)— **Queue Prompt を1回押すだけでフォルダ全部キューに積む** モード。フレッシュ押下時に残り全画像分のプロンプトを `PromptServer.prompt_queue.put` で **その場で一気にエンキュー** するので、ComfyUI のキューパネルに N 個並んで見え、途中でキャンセル/クリアも普通にできます。
   * Auto Queue (instant) を毎回ONにする手間がなくなります
   * 1パス処理し終えたら自動で停止(無限ループしない)
   * Auto Queue (instant) と併用すると2倍に enqueue される(無駄が生じる)ので、片方だけ使ってください。**通常はこちら(`auto_queue_all`)を ON のままで十分**
+* **`index` は Auto Advance の開始位置** — `auto_queue_all = ON` の場合、Queue を押すたびに `index` をスタート地点として(残り画像分を)前倒しキュー。途中の画像から再開したい時は `index` を変えてからもう一度 Queue を押すだけ。`loop = True` なら必ず1周分(計 `total` 枚)が積まれる。
 * `loop`(デフォルト **ON**)— 末尾到達後にカーソルを 0 にラップ。`auto_queue_all = True` と組み合わせる場合は **1パスで止まる**(無限ループ防止のため)。`auto_queue_all = False` の場合は通常通り無限ラップ。
 * `loop = False` — 1パス処理用。
   * **末尾到達 → 次の1キューだけ `ExecutionBlocker(None)` で下流(SaveImage / KSampler 等)を遮断**(ノードのバッジが緑の `(done)` になる)。**エラートースト表示なし** のサイレント遮断
@@ -977,7 +978,7 @@ Auto Queue 無しで `Iterate` を押した場合は1枚しか生成されませ
 ### Auto Queue 関連の挙動メモ
 
 - ComfyUI の Queue panel → "Extra options" → **Auto Queue: `instant`** が一番強力。1キュー終了で即次キュー。`change` は workflow が変わった時だけ。
-- `DARASK Folder Image Loader.auto_queue_all = True`(デフォルト)を有効にすると、ノードが自前で再キューするので Auto Queue が OFF でも1パス完走する。両方有効にすると **二重 enqueue** されて無駄なので、片方だけ使う。
+- `DARASK Folder Image Loader.auto_queue_all = True`(デフォルト)を有効にすると、Queue 1回押下時にノードが残り画像分のプロンプトを **その場で一気に `prompt_queue.put`**(フロントロード)するので、Auto Queue が OFF でも1パス完走する。キューパネルに N 個並ぶので途中キャンセル/クリアもしやすい。両方有効にすると **二重 enqueue** されて無駄なので、片方だけ使う。
 
 ### トラブルシューティング クイックリファレンス
 
