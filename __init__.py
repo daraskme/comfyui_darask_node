@@ -22,7 +22,16 @@ except Exception as _e:
     logging.warning(f"DARASK LTX 2.3 Generator unavailable (likely missing comfy_extras): {_e}")
 from .prompt_cells import DARASK_PromptCell, DARASK_PromptCellOutput
 from .rife_loader import DARASK_RIFEInterpolation
-from .video_loader import DARASK_LoadVideoUpload, DARASK_VideoInfo
+
+try:
+    from .video_loader import DARASK_LoadVideoUpload, DARASK_VideoInfo
+    _HAS_VIDEO_LOADER = True
+except Exception as _e:
+    DARASK_LoadVideoUpload = None
+    DARASK_VideoInfo = None
+    _HAS_VIDEO_LOADER = False
+    import logging
+    logging.warning(f"DARASK Video loader unavailable (likely missing opencv-python): {_e}")
 
 
 NODE_CLASS_MAPPINGS = {
@@ -40,8 +49,10 @@ NODE_CLASS_MAPPINGS = {
     **({"DARASK LTX 2.3 Generator": DARASK_LTX23Generator} if _HAS_LTX23_GEN else {}),
     "DARASK Prompt Cell": DARASK_PromptCell,
     "DARASK Prompt Cell Output": DARASK_PromptCellOutput,
-    "DARASK Load Video Upload": DARASK_LoadVideoUpload,
-    "DARASK Video Info": DARASK_VideoInfo,
+    **({
+        "DARASK Load Video Upload": DARASK_LoadVideoUpload,
+        "DARASK Video Info": DARASK_VideoInfo,
+    } if _HAS_VIDEO_LOADER else {}),
     "DARASK RIFE Interpolation": DARASK_RIFEInterpolation,
 }
 
@@ -60,8 +71,10 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **({"DARASK LTX 2.3 Generator": "DARASK LTX 2.3 Generator (All-in-One)"} if _HAS_LTX23_GEN else {}),
     "DARASK Prompt Cell": "DARASK Prompt Cell",
     "DARASK Prompt Cell Output": "DARASK Prompt Cell Output (CLIP Encode)",
-    "DARASK Load Video Upload": "DARASK Load Video (Upload)",
-    "DARASK Video Info": "DARASK Video Info",
+    **({
+        "DARASK Load Video Upload": "DARASK Load Video (Upload)",
+        "DARASK Video Info": "DARASK Video Info",
+    } if _HAS_VIDEO_LOADER else {}),
     "DARASK RIFE Interpolation": "DARASK RIFE Interpolation",
 }
 
