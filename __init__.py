@@ -1,11 +1,8 @@
-"""DARASK custom nodes for ComfyUI."""
-from .folder_loader import DARASK_FolderImageLoader
-from .exif_apply import (
-    DARASK_ExifRead,
-    DARASK_ExifApply,
-    DARASK_ExifApplyAnima,
-    DARASK_ExifApplySDXL,
-)
+"""DARASK custom nodes for ComfyUI.
+
+The hires-fix toolchain (Folder Image Loader + Exif Read/Apply) moved to
+its own pack: https://github.com/daraskme/ComfyUI-darask-hiresfix
+"""
 from .latent_preset import DARASK_EmptyLatentPreset
 from .lora_loader import DARASK_LoraLoader
 from .ltx23 import DARASK_LTX23VideoSettings, DARASK_FloatToInt
@@ -35,11 +32,6 @@ except Exception as _e:
 
 
 NODE_CLASS_MAPPINGS = {
-    "DARASK Folder Image Loader": DARASK_FolderImageLoader,
-    "DARASK Exif Read": DARASK_ExifRead,
-    "DARASK Exif Apply": DARASK_ExifApply,
-    "DARASK Exif Apply Anima": DARASK_ExifApplyAnima,
-    "DARASK Exif Apply SDXL": DARASK_ExifApplySDXL,
     "DARASK Empty Latent Preset": DARASK_EmptyLatentPreset,
     "DARASK Lora Loader": DARASK_LoraLoader,
     "DARASK LTX23 Video Settings": DARASK_LTX23VideoSettings,
@@ -57,11 +49,6 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "DARASK Folder Image Loader": "DARASK Folder Image Loader",
-    "DARASK Exif Read": "DARASK Exif Read",
-    "DARASK Exif Apply": "DARASK Exif Apply (Auto-detect)",
-    "DARASK Exif Apply Anima": "DARASK Exif Apply (Anima / UNET stack)",
-    "DARASK Exif Apply SDXL": "DARASK Exif Apply (SDXL / Checkpoint)",
     "DARASK Empty Latent Preset": "DARASK Empty Latent (Preset)",
     "DARASK Lora Loader": "DARASK Lora Loader",
     "DARASK LTX23 Video Settings": "DARASK LTX 2.3 Video Settings",
